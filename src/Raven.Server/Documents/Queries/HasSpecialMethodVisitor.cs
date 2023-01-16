@@ -43,11 +43,6 @@ namespace Raven.Server.Documents.Queries
                                     }
                                 }
                             }
-
-                            if (callExpression.Arguments.AsNodes()[0] is Literal fieldNameLiteral)
-                            {
-                                _queryMetadata.SumInJs = fieldNameLiteral.StringValue;
-                            }
                         }
 
                         break;

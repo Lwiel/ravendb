@@ -115,14 +115,6 @@ namespace Raven.Server.Documents.Patch
                     }
                 }
             }
-
-            if (args[0] is JsString fieldName)
-            {
-                doc.TryGetValue(fieldName, out var sumValue);
-
-                return sumValue;
-            }
-            
             return null;
         }        
 
