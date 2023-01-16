@@ -30,17 +30,26 @@ namespace Raven.Server.Documents.Queries
                         break;
                     case "sum":
                         _queryMetadata.SumInJs = null;
-                        
-                        if (callExpression.Arguments.Count == 2)
-                        {
-                            var fieldNameNode = callExpression.Arguments.AsNodes()[1];
 
-                            if (fieldNameNode is Literal fieldNameLiteral)
+                        if (callExpression.Arguments.Count == 1)
+                        {
+                            if (callExpression.Arguments[0] is ArrowFunctionExpression afe)
+                            {
+                                if (afe.ChildNodes[1] is StaticMemberExpression sme)
+                                {
+                                    if (sme.Property is Identifier identifier)
+                                    {
+                                        _queryMetadata.SumInJs = identifier.Name;
+                                    }
+                                }
+                            }
+
+                            if (callExpression.Arguments.AsNodes()[0] is Literal fieldNameLiteral)
                             {
                                 _queryMetadata.SumInJs = fieldNameLiteral.StringValue;
                             }
                         }
-                        
+
                         break;
                     case "load":
                     case "include":
