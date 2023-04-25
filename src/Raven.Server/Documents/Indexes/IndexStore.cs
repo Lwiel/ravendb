@@ -702,7 +702,7 @@ namespace Raven.Server.Documents.Indexes
             }
         }
 
-        public Index CreateTestIndexFromDefinition(IndexDefinition indexDefinition, DocumentDatabase documentDatabase, DocumentsOperationContext context)
+        public Index CreateTestIndexFromDefinition(IndexDefinition indexDefinition, DocumentDatabase documentDatabase, DocumentsOperationContext context, int maxDocumentsPerIndex)
         {
             // We do not want map-reduce test indexes to put documents into database storage
             if (indexDefinition.Type.IsMapReduce())
@@ -712,7 +712,7 @@ namespace Raven.Server.Documents.Indexes
 
             var testIndex = CreateIndexFromDefinition(indexDefinition, documentDatabase, testIndexConfiguration);
 
-            testIndex.InitializeTestRun(context);
+            testIndex.InitializeTestRun(context, maxDocumentsPerIndex);
 
             return testIndex;
         }
@@ -732,7 +732,7 @@ namespace Raven.Server.Documents.Indexes
                             break;
                         case IndexType.MapReduce:
                         case IndexType.JavaScriptMapReduce:
-                            index = MapReduceIndex.CreateNew<MapReduceIndex>(indexDefinition, documentDatabase, configuration: optionalIndexConfiguration);
+                            index = MapReduceIndex.CreateNew<MapReduceIndex>(indexDefinition, documentDatabase, forcedConfiguration: optionalIndexConfiguration);
                             break;
                         default:
                             throw new NotSupportedException($"Cannot create {indexDefinition.Type} index from IndexDefinition");
@@ -747,7 +747,7 @@ namespace Raven.Server.Documents.Indexes
                             break;
                         case IndexType.MapReduce:
                         case IndexType.JavaScriptMapReduce:
-                            index = MapReduceIndex.CreateNew<MapReduceCountersIndex>(indexDefinition, documentDatabase, configuration: optionalIndexConfiguration);
+                            index = MapReduceIndex.CreateNew<MapReduceCountersIndex>(indexDefinition, documentDatabase, forcedConfiguration: optionalIndexConfiguration);
                             break;
                         default:
                             throw new NotSupportedException($"Cannot create {indexDefinition.Type} index from IndexDefinition");
@@ -762,7 +762,7 @@ namespace Raven.Server.Documents.Indexes
                             break;
                         case IndexType.MapReduce:
                         case IndexType.JavaScriptMapReduce:
-                            index = MapReduceIndex.CreateNew<MapReduceTimeSeriesIndex>(indexDefinition, documentDatabase, configuration: optionalIndexConfiguration);
+                            index = MapReduceIndex.CreateNew<MapReduceTimeSeriesIndex>(indexDefinition, documentDatabase, forcedConfiguration: optionalIndexConfiguration);
                             break;
                         default:
                             throw new NotSupportedException($"Cannot create {indexDefinition.Type} index from IndexDefinition");
