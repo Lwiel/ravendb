@@ -743,7 +743,7 @@ namespace Raven.Server.Documents.Indexes
                     {
                         case IndexType.Map:
                         case IndexType.JavaScriptMap:
-                            index = MapCountersIndex.CreateNew(indexDefinition, documentDatabase, configuration: optionalIndexConfiguration);
+                            index = MapCountersIndex.CreateNew(indexDefinition, documentDatabase, forcedConfiguration: optionalIndexConfiguration);
                             break;
                         case IndexType.MapReduce:
                         case IndexType.JavaScriptMapReduce:
