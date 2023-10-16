@@ -21,7 +21,6 @@ namespace Sparrow.LowMemory
     {
         private static readonly Logger Logger = LoggingSource.Instance.GetLogger<MemoryInfoResult>("Server");
 
-        private static readonly ConcurrentQueue<Tuple<long, DateTime>> MemByTime = new ConcurrentQueue<Tuple<long, DateTime>>();
         private static DateTime _memoryRecordsSet;
         private static readonly TimeSpan MemByTimeThrottleTime = TimeSpan.FromMilliseconds(100);
 
@@ -33,10 +32,6 @@ namespace Sparrow.LowMemory
         private static readonly byte[] SwapTotal = Encoding.UTF8.GetBytes("SwapTotal:");
         private static readonly byte[] Committed_AS = Encoding.UTF8.GetBytes("Committed_AS:");
 
-        public static long HighLastOneMinute;
-        public static long LowLastOneMinute = long.MaxValue;
-        public static long HighLastFiveMinutes;
-        public static long LowLastFiveMinutes = long.MaxValue;
         public static long HighSinceStartup;
         public static long LowSinceStartup = long.MaxValue;
 
@@ -750,14 +745,10 @@ namespace Sparrow.LowMemory
             {
                 High = new MemoryInfoResult.MemoryUsageIntervals
                 {
-                    LastOneMinute = new Size(HighLastOneMinute, SizeUnit.Bytes),
-                    LastFiveMinutes = new Size(HighLastFiveMinutes, SizeUnit.Bytes),
                     SinceStartup = new Size(HighSinceStartup, SizeUnit.Bytes)
                 },
                 Low = new MemoryInfoResult.MemoryUsageIntervals
                 {
-                    LastOneMinute = new Size(LowLastOneMinute, SizeUnit.Bytes),
-                    LastFiveMinutes = new Size(LowLastFiveMinutes, SizeUnit.Bytes),
                     SinceStartup = new Size(LowSinceStartup, SizeUnit.Bytes)
                 }
             };
@@ -783,44 +774,10 @@ namespace Sparrow.LowMemory
             if (LowSinceStartup > availableMemoryForProcessingInBytes)
                 LowSinceStartup = availableMemoryForProcessingInBytes;
 
-            while (MemByTime.TryPeek(out var existing) &&
-                   (now - existing.Item2) > TimeSpan.FromMinutes(5))
-            {
-                if (MemByTime.TryDequeue(out _) == false)
-                    break;
-            }
-
             if (now - _memoryRecordsSet < MemByTimeThrottleTime)
                 return;
 
             _memoryRecordsSet = now;
-
-            MemByTime.Enqueue(new Tuple<long, DateTime>(availableMemoryForProcessingInBytes, now));
-
-            long highLastOneMinute = 0;
-            long lowLastOneMinute = long.MaxValue;
-            long highLastFiveMinutes = 0;
-            long lowLastFiveMinutes = long.MaxValue;
-
-            foreach (var item in MemByTime)
-            {
-                if (now - item.Item2 < TimeSpan.FromMinutes(1))
-                {
-                    if (highLastOneMinute < item.Item1)
-                        highLastOneMinute = item.Item1;
-                    if (lowLastOneMinute > item.Item1)
-                        lowLastOneMinute = item.Item1;
-                }
-                if (highLastFiveMinutes < item.Item1)
-                    highLastFiveMinutes = item.Item1;
-                if (lowLastFiveMinutes > item.Item1)
-                    lowLastFiveMinutes = item.Item1;
-            }
-
-            HighLastOneMinute = highLastOneMinute;
-            LowLastOneMinute = lowLastOneMinute;
-            HighLastFiveMinutes = highLastFiveMinutes;
-            LowLastFiveMinutes = lowLastFiveMinutes;
         }
 
         public static DirtyMemoryState GetDirtyMemoryState()

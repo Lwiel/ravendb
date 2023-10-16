@@ -337,12 +337,8 @@ namespace Raven.Server.Documents.Handlers.Debugging
                 [nameof(MemoryInfo.DirtyMemory)] = Size.Humane(dirtyMemoryState.TotalDirtyInBytes),
                 [nameof(MemoryInfo.AvailableMemory)] = Size.Humane(memInfo.AvailableMemory.GetValue(SizeUnit.Bytes)),
                 [nameof(MemoryInfo.AvailableMemoryForProcessing)] = memInfo.AvailableMemoryForProcessing.ToString(),
-                [nameof(MemoryInfo.HighMemLastOneMinute)] = memoryUsageRecords.High.LastOneMinute.ToString(),
-                [nameof(MemoryInfo.LowMemLastOneMinute)] = memoryUsageRecords.Low.LastOneMinute.ToString(),
-                [nameof(MemoryInfo.HighMemLastFiveMinute)] = memoryUsageRecords.High.LastFiveMinutes.ToString(),
-                [nameof(MemoryInfo.LowMemLastFiveMinute)] = memoryUsageRecords.Low.LastFiveMinutes.ToString(),
                 [nameof(MemoryInfo.HighMemSinceStartup)] = memoryUsageRecords.High.SinceStartup.ToString(),
-                [nameof(MemoryInfo.LowMemSinceStartup)] = memoryUsageRecords.Low.SinceStartup.ToString(),
+                [nameof(MemoryInfo.LowMemSinceStartup)] = memoryUsageRecords.Low.SinceStartup.ToString()
             };
             if (memInfo.Remarks != null)
             {
@@ -549,10 +545,6 @@ namespace Raven.Server.Documents.Handlers.Debugging
             public string DirtyMemory { get; set; }
             public string AvailableMemory { get; set; }
             public string AvailableMemoryForProcessing { get; set; }
-            public string HighMemLastOneMinute { get; set; }
-            public string LowMemLastOneMinute { get; set; }
-            public string HighMemLastFiveMinute { get; set; }
-            public string LowMemLastFiveMinute { get; set; }
             public string HighMemSinceStartup { get; set; }
             public string LowMemSinceStartup { get; set; }
             public MemoryInfoMappingItem[] Mappings { get; set; }

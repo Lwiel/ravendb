@@ -4,8 +4,6 @@
     {
         public class MemoryUsageIntervals
         {
-            public Size LastOneMinute;
-            public Size LastFiveMinutes;
             public Size SinceStartup;
         }
 
