@@ -2411,7 +2411,6 @@ function execute(doc, args){
                         return;
                     
                     case MethodType.Vector_Search:
-                    case MethodType.Vector_Nearest:
                         fieldName = GetQueryFieldName(methodName, arguments, parameters);
                         _metadata.AddVectorField(fieldName, parameters);
                         break;

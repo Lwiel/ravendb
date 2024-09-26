@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -596,9 +598,7 @@ public static class CoraxQueryBuilder
                 case MethodType.Spatial_Intersects:
                     return HandleSpatial(builderParameters, me, methodType);
                 case MethodType.Vector_Search:
-                    return HandleVectorSearch(builderParameters, me);
-                case MethodType.Vector_Nearest:
-                    return HandleVectorNearest(builderParameters, me);
+                    return HandleVector(builderParameters, me);
                 case MethodType.Regex:
                     return HandleRegex(builderParameters, me, ref leftOnlyOptimization);
                 case MethodType.MoreLikeThis:
@@ -612,32 +612,42 @@ public static class CoraxQueryBuilder
         throw new InvalidQueryException("Unable to understand query", metadata.QueryText, queryParameters);
     }
 
-    private static IQueryMatch HandleVectorNearest(Parameters builderParameters, MethodExpression me)
+    private static byte[] GetEmbedding(Parameters builderParameters)
     {
-        var (value, valueType) = QueryBuilderHelper.GetValue(builderParameters.Metadata.Query, builderParameters.Metadata, builderParameters.QueryParameters, (ValueExpression)me.Arguments[1]);
-        var vector = valueType switch
+        byte[] embedding;
+
+        if (builderParameters.QueryParameters.TryGet<object>("p0", out var queryParamValue) == false)
+            throw new Exception();
+
+        switch (queryParamValue)
         {
-            ValueTokenType.String => Convert.FromBase64String(value.ToString()),
-            _ => throw new NotSupportedException("Vector.Nearest on " + valueType)
-        };
-        
-        return HandleVector(builderParameters, me, vector);
+            case LazyStringValue lsv:
+                embedding = GenerateEmbeddings.UsingI8(lsv);
+                break;
+            
+            case BlittableJsonReaderArray bjra:
+                List<byte> values = new();
+
+                foreach (LazyNumberValue lnv in bjra)
+                {
+                    values.Add(lnv.ToByte(CultureInfo.InvariantCulture));
+                }
+
+                embedding = values.ToArray();
+                
+                break;
+            
+            default:
+                throw new Exception();
+        }
+
+        return embedding;
     }
     
-    private static IQueryMatch HandleVectorSearch(Parameters builderParameters, MethodExpression me)
+    private static IQueryMatch HandleVector(Parameters builderParameters, MethodExpression me)
     {
-        var (value, valueType) = QueryBuilderHelper.GetValue(builderParameters.Metadata.Query, builderParameters.Metadata, builderParameters.QueryParameters, (ValueExpression)me.Arguments[1]);
-        var valueAsString = valueType switch
-        {
-            ValueTokenType.String =>value.ToString(),
-            _ => throw new NotSupportedException("Vector.Search() on " + valueType)
-        };
+        var vector = GetEmbedding(builderParameters);
         
-        return HandleVector(builderParameters, me, GenerateEmbeddings.UsingI8(valueAsString));
-    }
-
-    private static IQueryMatch HandleVector(Parameters builderParameters, MethodExpression me, byte[] vector)
-    {
         var metadata = builderParameters.Metadata;
         var fieldName = QueryBuilderHelper.ExtractIndexFieldName(builderParameters.Metadata.Query, builderParameters.QueryParameters, me.Arguments[0], builderParameters.Metadata);
         if (metadata.IsDynamic)
@@ -647,23 +657,18 @@ public static class CoraxQueryBuilder
 
         var fieldMetadata = QueryBuilderHelper.GetFieldMetadata(builderParameters.Allocator, fieldName, builderParameters.Index, builderParameters.IndexFieldsMapping,
             builderParameters.FieldsToFetch, builderParameters.HasDynamics, builderParameters.DynamicFields, hasBoost: builderParameters.HasBoost);
+        
+        // Handle default
+        var similarityThreshold = 0.8f;
 
-        var minimumMatch = 0.90f;
-
-        if (me.Arguments.Count > 2)
+        if (me.Arguments.Count == 3)
         {
-            object value;
-            ValueTokenType valueType;
-            (value, valueType) = QueryBuilderHelper.GetValue(builderParameters.Metadata.Query, builderParameters.Metadata, builderParameters.QueryParameters, (ValueExpression)me.Arguments[2]);
-            minimumMatch = valueType switch
-            {
-                ValueTokenType.Long => (long)value,
-                ValueTokenType.Double => (float)(double)value,
-                _ => throw new NotSupportedException("vector.search() minimumMatch must be a float, but was: " + valueType)
-            };
+            var valueExpression = (ValueExpression)me.Arguments[2];
+
+            similarityThreshold = float.Parse(valueExpression.Token.Value);
         }
         
-        return builderParameters.IndexSearcher.VectorQuery(fieldMetadata, vector, minimumMatch);
+        return builderParameters.IndexSearcher.VectorQuery(fieldMetadata, vector, similarityThreshold);
     }
 
     private static IQueryMatch HandleIn(Parameters builderParameters, InExpression ie, bool exact)
