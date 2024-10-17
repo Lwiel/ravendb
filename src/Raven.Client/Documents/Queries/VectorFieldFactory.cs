@@ -6,8 +6,6 @@ using System.Numerics;
 using Raven.Client.Documents.Conventions;
 using Raven.Client.Documents.Indexes.Vector;
 using Raven.Client.Extensions;
-using Sparrow;
-using Sparrow.Binary;
 
 namespace Raven.Client.Documents.Queries;
 
@@ -25,9 +23,9 @@ public interface IVectorFieldFactory<T>
     
     public IVectorEmbeddingField WithBase64(Expression<Func<T, object>> propertySelector, EmbeddingType storedEmbeddingQuantization = Constants.VectorSearch.DefaultEmbeddingType, VectorIndexingStrategy vectorIndexingStrategy = Constants.VectorSearch.DefaultIndexingStrategy);
 
-    public IVectorField WithField(string fieldName, EmbeddingType storedEmbeddingQuantization = Constants.VectorSearch.DefaultEmbeddingType);
+    public IVectorField WithField(string fieldName);
     
-    public IVectorField WithField(Expression<Func<T, object>> propertySelector, EmbeddingType storedEmbeddingQuantization = Constants.VectorSearch.DefaultEmbeddingType);
+    public IVectorField WithField(Expression<Func<T, object>> propertySelector);
 }
 
 public interface IVectorEmbeddingTextField
