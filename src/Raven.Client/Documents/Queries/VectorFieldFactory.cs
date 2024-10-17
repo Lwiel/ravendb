@@ -11,21 +11,21 @@ public interface IVectorFieldFactory<T>
     
     public IVectorEmbeddingTextField WithText(Expression<Func<T, object>> propertySelector);
     
-    public IVectorEmbeddingField WithEmbedding(string fieldName, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.None);
+    public IVectorEmbeddingField WithEmbedding(string fieldName, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.F32);
     
-    public IVectorEmbeddingField WithEmbedding(Expression<Func<T, object>> propertySelector, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.None);
-    public IVectorEmbeddingField WithBase64(string fieldName, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.None);
+    public IVectorEmbeddingField WithEmbedding(Expression<Func<T, object>> propertySelector, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.F32);
+    public IVectorEmbeddingField WithBase64(string fieldName, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.F32);
     
-    public IVectorEmbeddingField WithBase64(Expression<Func<T, object>> propertySelector, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.None);
+    public IVectorEmbeddingField WithBase64(Expression<Func<T, object>> propertySelector, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.F32);
 
-    public IVectorField WithField(string fieldName, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.None);
+    public IVectorField WithField(string fieldName);
     
-    public IVectorField WithField(Expression<Func<T, object>> propertySelector, EmbeddingQuantizationType storedEmbeddingQuantization = EmbeddingQuantizationType.None);
+    public IVectorField WithField(Expression<Func<T, object>> propertySelector);
 }
 
 public interface IVectorEmbeddingTextField
 {
-    
+    public IVectorEmbeddingTextField TargetQuantization(EmbeddingQuantizationType targetEmbeddingQuantization);
 }
 
 public interface IVectorEmbeddingField
@@ -48,6 +48,8 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
     IVectorEmbeddingTextField IVectorFieldFactory<T>.WithText(Expression<Func<T, object>> propertySelector)
     {
         FieldName = propertySelector.ToPropertyPath(DocumentConventions.Default);
+        SourceQuantizationType = EmbeddingQuantizationType.Text;
+        DestinationQuantizationType = SourceQuantizationType;
 
         return this;
     }
@@ -55,6 +57,8 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
     IVectorEmbeddingTextField IVectorFieldFactory<T>.WithText(string fieldName)
     {
         FieldName = fieldName;
+        SourceQuantizationType = EmbeddingQuantizationType.Text;
+        DestinationQuantizationType = SourceQuantizationType;
 
         return this;
     }
@@ -97,19 +101,19 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
         return this;
     }
 
-    IVectorField IVectorFieldFactory<T>.WithField(string fieldName, EmbeddingQuantizationType storedEmbeddingQuantization)
+    IVectorField IVectorFieldFactory<T>.WithField(string fieldName)
     {
         FieldName = fieldName;
-        SourceQuantizationType = storedEmbeddingQuantization;
+        SourceQuantizationType = EmbeddingQuantizationType.Any;
         DestinationQuantizationType = SourceQuantizationType;
         
         return this;
     }
 
-    IVectorField IVectorFieldFactory<T>.WithField(Expression<Func<T, object>> propertySelector, EmbeddingQuantizationType storedEmbeddingQuantization)
+    IVectorField IVectorFieldFactory<T>.WithField(Expression<Func<T, object>> propertySelector)
     {
         FieldName = propertySelector.ToPropertyPath(DocumentConventions.Default);
-        SourceQuantizationType = storedEmbeddingQuantization;
+        SourceQuantizationType = EmbeddingQuantizationType.Any;
         DestinationQuantizationType = SourceQuantizationType;
         
         return this;
@@ -127,6 +131,13 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
         
         return this;
     }
+
+    public IVectorEmbeddingTextField TargetQuantization(EmbeddingQuantizationType targetEmbeddingQuantization)
+    {
+        DestinationQuantizationType = targetEmbeddingQuantization;
+
+        return this;
+    }
 }
 
 public interface IVectorEmbeddingTextFieldValueFactory
@@ -136,8 +147,8 @@ public interface IVectorEmbeddingTextFieldValueFactory
 
 public interface IVectorEmbeddingFieldValueFactory
 {
-    public void ByEmbedding(float[] embedding, EmbeddingQuantizationType queriedEmbeddingQuantization = EmbeddingQuantizationType.None);
-    public void ByBase64(string base64Embedding, EmbeddingQuantizationType queriedEmbeddingQuantization = EmbeddingQuantizationType.None);
+    public void ByEmbedding(float[] embedding, EmbeddingQuantizationType queriedEmbeddingQuantization = EmbeddingQuantizationType.F32);
+    public void ByBase64(string base64Embedding, EmbeddingQuantizationType queriedEmbeddingQuantization = EmbeddingQuantizationType.F32);
 }
 
 public interface IVectorFieldValueFactory : IVectorEmbeddingTextFieldValueFactory, IVectorEmbeddingFieldValueFactory
@@ -172,8 +183,9 @@ internal class VectorFieldValueFactory : IVectorFieldValueFactory
 
 public enum EmbeddingQuantizationType
 {
-    None = 0,
-    F32 = None,
-    I8 = 1,
-    I1 = 2
+    Any = 0, 
+    Text = 1,
+    F32 = 2,
+    I8 = 3,
+    I1 = 4
 }

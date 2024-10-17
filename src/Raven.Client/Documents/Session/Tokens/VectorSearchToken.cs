@@ -29,37 +29,26 @@ public sealed class VectorSearchToken : WhereToken
     
     public override void WriteTo(StringBuilder writer)
     {
-        bool explicitSourceQuantizationType = false;
-        
         writer.Append("vector.search(");
 
         if (IsSourceBase64Encoded)
             writer.Append("base64(");
-        
-        if (SourceQuantizationType == EmbeddingQuantizationType.None)
-        {
-            if (TargetQuantizationType != EmbeddingQuantizationType.None)
-            {
-                // TODO
-                writer.Append($"f32_{TargetQuantizationType.ToString().ToLower()}(");
 
-                explicitSourceQuantizationType = true;
-            }
-        }
-        
-        else if (TargetQuantizationType != EmbeddingQuantizationType.None)
+        if (SourceQuantizationType != EmbeddingQuantizationType.Any)
         {
-            writer.Append($"{SourceQuantizationType.ToString().ToLower()}(");
-            
-            explicitSourceQuantizationType = true;
+            if (SourceQuantizationType == TargetQuantizationType)
+                writer.Append($"{SourceQuantizationType.ToString().ToLower()}(");
+
+            else
+                writer.Append($"{SourceQuantizationType.ToString().ToLower()}_{TargetQuantizationType.ToString().ToLower()}(");
         }
-        
+
         writer.Append(FieldName);
 
         if (IsSourceBase64Encoded)
             writer.Append(')');
-
-        if (explicitSourceQuantizationType)
+        
+        if (SourceQuantizationType != EmbeddingQuantizationType.Any)
             writer.Append(')');
         
         writer.Append(", ");
@@ -67,12 +56,12 @@ public sealed class VectorSearchToken : WhereToken
         if (IsVectorBase64Encoded)
             writer.Append("base64(");
 
-        if (QueriedVectorQuantizationType != EmbeddingQuantizationType.F32)
+        if (QueriedVectorQuantizationType != EmbeddingQuantizationType.F32 && QueriedVectorQuantizationType != EmbeddingQuantizationType.Text && QueriedVectorQuantizationType != EmbeddingQuantizationType.Any)
             writer.Append($"{QueriedVectorQuantizationType.ToString().ToLower()}(");
         
         writer.Append($"${ParameterName}");
 
-        if (QueriedVectorQuantizationType != EmbeddingQuantizationType.F32)
+        if (QueriedVectorQuantizationType != EmbeddingQuantizationType.F32 && QueriedVectorQuantizationType != EmbeddingQuantizationType.Text && QueriedVectorQuantizationType != EmbeddingQuantizationType.Any)
             writer.Append(')');
 
         if (IsVectorBase64Encoded)
