@@ -107,19 +107,19 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
         return this;
     }
 
-    IVectorField IVectorFieldFactory<T>.WithField(string fieldName, EmbeddingType storedEmbeddingQuantization)
+    IVectorField IVectorFieldFactory<T>.WithField(string fieldName)
     {
         FieldName = fieldName;
-        SourceQuantizationType = storedEmbeddingQuantization;
+        SourceQuantizationType = EmbeddingQuantizationType.Any;
         DestinationQuantizationType = SourceQuantizationType;
         
         return this;
     }
 
-    IVectorField IVectorFieldFactory<T>.WithField(Expression<Func<T, object>> propertySelector, EmbeddingType storedEmbeddingQuantization)
+    IVectorField IVectorFieldFactory<T>.WithField(Expression<Func<T, object>> propertySelector)
     {
         FieldName = propertySelector.ToPropertyPath(DocumentConventions.Default);
-        SourceQuantizationType = storedEmbeddingQuantization;
+        SourceQuantizationType = EmbeddingQuantizationType.Any;
         DestinationQuantizationType = SourceQuantizationType;
         
         return this;
@@ -129,19 +129,17 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
     {
         DestinationQuantizationType = targetEmbeddingQuantization;
         
-        if (SourceQuantizationType is EmbeddingType.Int8 or EmbeddingType.Binary && DestinationQuantizationType != SourceQuantizationType)
-            throw new InvalidDataException("Cannot quantize already quantized embeddings");
-        
-        if (DestinationQuantizationType == EmbeddingType.Text)
-            throw new InvalidDataException("Cannot quantize the embedding to Text. This option is only for SourceQuantizationType.");
+        if (DestinationQuantizationType < SourceQuantizationType)
+            throw new Exception($"Cannot quantize vector with {SourceQuantizationType} quantization into {DestinationQuantizationType}");
+
+        if (SourceQuantizationType == EmbeddingType.Int8 && DestinationQuantizationType == EmbeddingType.Binary)
+            throw new Exception("Cannot quantize already quantized embeddings");
         
         return this;
     }
 
-    public IVectorEmbeddingTextField TargetQuantization(EmbeddingType targetEmbeddingQuantization)
+    public IVectorEmbeddingTextField TargetQuantization(EmbeddingQuantizationType targetEmbeddingQuantization)
     {
-        if (DestinationQuantizationType == EmbeddingType.Text)
-            throw new InvalidDataException("Cannot quantize the embedding to Text. This option is only for SourceQuantizationType.");
         DestinationQuantizationType = targetEmbeddingQuantization;
 
         return this;
