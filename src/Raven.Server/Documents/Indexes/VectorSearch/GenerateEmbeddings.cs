@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Jint;
 using Jint.Native;
 using Raven.Client.Documents.Indexes.Vector;
+using Raven.Client.Documents.Queries;
 using SmartComponents.LocalEmbeddings;
 using Sparrow;
 using Sparrow.Json;
@@ -135,19 +136,21 @@ public static class GenerateEmbeddings
         {
             case EmbeddingType.Binary:
             {
-                PortableExceptions.Throw<NotSupportedException>("TODO");
-                return default;
+                var binaryEmbedding = VectorQuantizer.ToInt1((float[])(object)array);
+
+                return new VectorValue(arrayPool: null, binaryEmbedding, binaryEmbedding);
             }
             case EmbeddingType.Int8:
             {
-                PortableExceptions.Throw<NotSupportedException>("TODO");
-                return default;
+                var int8Embedding = VectorQuantizer.ToInt8((float[])(object)array);
+                
+                return new VectorValue(arrayPool: null, (byte[])(object)int8Embedding, (byte[])(object)int8Embedding);
             }
             default:
             {
                 if (typeof(T) == typeof(byte))
                 {
-                    return new VectorValue(arrayPool:null, (byte[])(object)array, (byte[])(object)array);
+                    return new VectorValue(arrayPool: null, (byte[])(object)array, (byte[])(object)array);
                 }
                 
                 var embeddings = (float[])(object)array;
