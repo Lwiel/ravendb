@@ -113,7 +113,7 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
         return this;
     }
 
-    IVectorField IVectorFieldFactory<T>.WithField(string fieldName, EmbeddingType storedEmbeddingQuantization)
+    IVectorField IVectorFieldFactory<T>.WithField(string fieldName)
     {
         FieldName = fieldName;
         SourceQuantizationType = Constants.VectorSearch.DefaultEmbeddingType;
@@ -122,7 +122,7 @@ internal sealed class VectorEmbeddingFieldFactory<T> : IVectorFieldFactory<T>, I
         return this;
     }
 
-    IVectorField IVectorFieldFactory<T>.WithField(Expression<Func<T, object>> propertySelector, EmbeddingType storedEmbeddingQuantization)
+    IVectorField IVectorFieldFactory<T>.WithField(Expression<Func<T, object>> propertySelector)
     {
         FieldName = propertySelector.ToPropertyPath(DocumentConventions.Default);
         SourceQuantizationType = Constants.VectorSearch.DefaultEmbeddingType;
