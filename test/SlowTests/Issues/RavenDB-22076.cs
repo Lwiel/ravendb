@@ -107,6 +107,10 @@ public class RavenDB_22076 : RavenTestBase
                     .VectorSearch(x => x.WithBase64("Base64Field", EmbeddingType.Int8), factory => factory.ByEmbedding([0.2f, 0.3f])).ToString();
 
                 Assert.Equal("from 'Dtos' where vector.search(embedding.i8(Base64Field), $p0)", q6);
+
+                var q7 = session.Advanced.AsyncDocumentQuery<Dto>().VectorSearch(x => x.WithBase64(dto => dto.EmbeddingBase64), factory => factory.ByBase64("abcd==")).ToString();
+                
+                Assert.Equal("from 'Dtos' where vector.search(EmbeddingBase64, $p0)", q7);
             }
         }
     }
@@ -148,13 +152,19 @@ public class RavenDB_22076 : RavenTestBase
 
     [RavenTheory(RavenTestCategory.Querying)]
     [RavenData(SearchEngineMode = RavenSearchEngineMode.Corax)]
-    public void TestQuantizer(Options options)
+    public void TestQuantizers(Options options)
     {
         float[] rawEmbedding = [0.2f, 0.3f, -2.0f, 1.0f, 0.5f, -1.0f, -1.75f, 0.0f, 0.2f, 0.3f, -2.0f, 1.0f, 0.5f, -1.0f, -1.75f, 0.0f, 1.2f];
         
         var int8Embedding = VectorQuantizer.ToInt8(rawEmbedding);
+        
+        Assert.Equal([13, 19, -127, 64, 32, -64, -111, 0, 
+                      13, 19, -127, 64, 32, -64, -111, 0, 76,
+                      114, 34, -113, 67], int8Embedding);
 
         var int1Embedding = VectorQuantizer.ToInt1(rawEmbedding);
+        
+        Assert.Equal([217, 217, 128], int1Embedding);
     }
 
     private class Dto

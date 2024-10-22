@@ -73,25 +73,23 @@ public static class VectorUtils
                 return (T)(object)Convert.ToByte(d);
         }
 
-        PortableExceptions.Throw<InvalidDataException>($"Type of T is expected to be (float, sbyte, byte). Got (Input: {value.GetType().FullName}.");
-        return default(T);
+        PortableExceptions.Throw<InvalidDataException>($"Type of T is expected to be either {typeof(float)}, {typeof(sbyte)} or {typeof(byte)}. Got {value.GetType().FullName} instead.");
+        return default;
     }
 }
 
 public static class GenerateEmbeddings
 {
-    //Dimensions (buffer size) from internals of SmartComponents.
+    // Dimensions (buffer size) from internals of SmartComponents.
     private const int I1Size = 48;
     private const int I8Size = 388;
     private const int F32Size = 1536;
-
-
-    [ThreadStatic] //avoid convoys in querying
+    
+    [ThreadStatic] // avoid convoys in querying
     private static ArrayPool<byte> Allocator;
 
     private static readonly LocalEmbedder Embedder = new();
-
-
+    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static VectorValue FromText(in VectorOptions options, in string text)
     {
@@ -100,7 +98,7 @@ public static class GenerateEmbeddings
             EmbeddingType.Float32 => CreateSmartComponentsLocalEmbedding<EmbeddingF32>(text, F32Size),
             EmbeddingType.Int8 => CreateSmartComponentsLocalEmbedding<EmbeddingI8>(text, I8Size),
             EmbeddingType.Binary => CreateSmartComponentsLocalEmbedding<EmbeddingI1>(text, I1Size),
-            _ => throw new ArgumentOutOfRangeException(nameof(options.DestinationEmbeddingType), options.DestinationEmbeddingType, null)
+            _ => throw new NotSupportedException($"Unsupported {nameof(options.DestinationEmbeddingType)}: {options.DestinationEmbeddingType}")
         };
     }
 
@@ -112,7 +110,7 @@ public static class GenerateEmbeddings
         
         if (embeddingSourceType is EmbeddingType.Binary)
         {
-            PortableExceptions.ThrowIf<InvalidDataException>(typeof(T) != typeof(byte), $"Data already quantized in '{EmbeddingType.Binary}' form should be of type 'byte'.");
+            PortableExceptions.ThrowIf<InvalidDataException>(typeof(T) != typeof(byte), $"Data already quantized in '{EmbeddingType.Binary}' form should be of type '{typeof(byte)}'.");
             return new VectorValue(arrayPool: null, (byte[])(object)array, (byte[])(object)array);
         }
         
@@ -120,18 +118,18 @@ public static class GenerateEmbeddings
         {
             if (typeof(T) == typeof(byte))
                 return new VectorValue(arrayPool: null, (byte[])(object)array, new Memory<byte>((byte[])(object)array, 0, array.Length));
-
             
-            PortableExceptions.ThrowIf<InvalidDataException>(typeof(T) != typeof(sbyte), $"Data already quantized in '{EmbeddingType.Int8}' form should be of type 'sbyte'.");
+            PortableExceptions.ThrowIf<InvalidDataException>(typeof(T) != typeof(sbyte), $"Data already quantized in '{EmbeddingType.Int8}' form should be of type '{typeof(sbyte)}'.");
             var bytes = MemoryMarshal.Cast<T, byte>(array);
             var allocator = Allocator ??= ArrayPool<byte>.Create();
             var buffer = allocator.Rent(bytes.Length);
             bytes.CopyTo(buffer.AsSpan());
             
-            return new VectorValue(arrayPool: allocator, (byte[])(object)buffer, new Memory<byte>(buffer, 0, array.Length));
+            return new VectorValue(arrayPool: allocator, buffer, new Memory<byte>(buffer, 0, array.Length));
         }
         
         PortableExceptions.ThrowIf<InvalidDataException>(typeof(T) != typeof(float), $"Not quantized data ('{nameof(VectorOptions.SourceEmbeddingType)}': '{EmbeddingType.Float32}') should be stored as floats (or floats encoded into base64).");
+        
         switch (embeddingDestinationType)
         {
             case EmbeddingType.Binary:
@@ -162,17 +160,16 @@ public static class GenerateEmbeddings
             }
         }
     }
-
-
+    
     private static VectorValue CreateSmartComponentsLocalEmbedding<TEmbedding>(in string text, in int dimensions)
-            where TEmbedding : IEmbedding<TEmbedding>
-        {
-            var currentAllocator = Allocator ??= ArrayPool<byte>.Create();
-            var buffer = currentAllocator.Rent(dimensions);
-            var embedding = new Memory<byte>(buffer, 0, dimensions);
-            Embedder.Embed<TEmbedding>(text, embedding);
-            return new VectorValue(currentAllocator, buffer, embedding);
-        }
+        where TEmbedding : IEmbedding<TEmbedding>
+    {
+        var currentAllocator = Allocator ??= ArrayPool<byte>.Create();
+        var buffer = currentAllocator.Rent(dimensions);
+        var embedding = new Memory<byte>(buffer, 0, dimensions);
+        Embedder.Embed<TEmbedding>(text, embedding);
+        return new VectorValue(currentAllocator, buffer, embedding);
+    }
 
 
 #pragma warning disable SKEXP0070 // ignore experimental warning 
