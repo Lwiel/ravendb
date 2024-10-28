@@ -67,12 +67,12 @@ public class RavenDB_22076 : RavenTestBase
         {
             using (var session = store.OpenAsyncSession())
             {
-                var ex1 = Assert.Throws<InvalidDataException>(() => session.Advanced.AsyncDocumentQuery<Dto>()
+                var ex1 = Assert.Throws<InvalidOperationException>(() => session.Advanced.AsyncDocumentQuery<Dto>()
                     .VectorSearch(x => x.WithEmbedding("EmbeddingField", EmbeddingType.Int8).TargetQuantization(EmbeddingType.Binary), factory => factory.ByEmbedding([2.5f, 3.3f]), 0.65f).ToString());
                 
                 Assert.Contains("Cannot quantize already quantized embeddings", ex1.Message);
 
-                var ex2 = Assert.Throws<InvalidDataException>(() => session.Advanced.AsyncDocumentQuery<Dto>()
+                var ex2 = Assert.Throws<InvalidOperationException>(() => session.Advanced.AsyncDocumentQuery<Dto>()
                     .VectorSearch(x => x.WithEmbedding("EmbeddingField", EmbeddingType.Int8).TargetQuantization(EmbeddingType.Single), factory => factory.ByEmbedding([2.5f, 3.3f]), 0.65f).ToString());
                     
                 Assert.Contains("Cannot quantize already quantized embeddings", ex2.Message);
