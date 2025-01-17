@@ -2476,6 +2476,9 @@ namespace Raven.Server.ServerWide
                     command = new PutSnowflakeConnectionStringCommand(JsonDeserializationCluster.SnowflakeConnectionString(connectionString), databaseName,
                         raftRequestId);
                     break;
+                case ConnectionStringType.Ai:
+                    command = new PutAiConnectionStringCommand(JsonDeserializationCluster.AiConnectionString(connectionString), databaseName, raftRequestId);
+                    break;
                 default:
                     throw new NotSupportedException($"Unknown connection string type: {connectionStringType}");
             }
