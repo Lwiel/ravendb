@@ -7,7 +7,7 @@ using System.Resources;
 
 [assembly: AssemblyVersion("7.0.0")]
 [assembly: AssemblyFileVersion("7.0.0.70")]
-[assembly: AssemblyInformationalVersion("7.0.0")]
+[assembly: AssemblyInformationalVersion("7.0.0-custom-70")]
 
 #if DEBUG
 [assembly: AssemblyConfiguration("Debug")]

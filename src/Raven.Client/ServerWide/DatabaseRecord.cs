@@ -123,7 +123,7 @@ namespace Raven.Client.ServerWide
         
         public Dictionary<string, SnowflakeConnectionString> SnowflakeConnectionStrings = new Dictionary<string, SnowflakeConnectionString>();
         
-        public Dictionary<string, AiEtlConnectionString> AiConnectionStrings = new Dictionary<string, AiEtlConnectionString>();
+        public Dictionary<string, AiConnectionString> AiConnectionStrings = new();
 
         public List<RavenEtlConfiguration> RavenEtls = new List<RavenEtlConfiguration>();
 
@@ -139,7 +139,7 @@ namespace Raven.Client.ServerWide
         
         public List<SnowflakeEtlConfiguration> SnowflakeEtls = new List<SnowflakeEtlConfiguration>();
         
-        public List<AiEtlConfiguration> AiEtls = new List<AiEtlConfiguration>();
+        public List<VectorEmbeddingEnrichmentEtlConfiguration> VectorEmbeddingEnrichmentEtls = [];
 
         public ClientConfiguration Client;
 
@@ -483,6 +483,8 @@ namespace Raven.Client.ServerWide
                 throw new InvalidOperationException($"Can't use task name '{taskName}', there is already a Snowflake ETL task with that name");
             if (QueueSinks.Any(x => x.Name.Equals(taskName, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException($"Can't use task name '{taskName}', there is already a Queue Sink task with that name");
+            if (VectorEmbeddingEnrichmentEtls.Any(x => x.Name.Equals(taskName, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException($"Can't use task name '{taskName}', there is already a Vector Embedding Enrichment ETL task with that name");
         }
 
         internal string EnsureUniqueTaskName(string defaultTaskName)

@@ -157,22 +157,22 @@ namespace Raven.Server.ServerWide.Commands.ETL
             Add(ref record.SnowflakeEtls, record, etag);
         }
     }
-    
-    public sealed class AddAiEtlCommand : AddEtlCommand<AiEtlConfiguration, AiEtlConnectionString>
+
+    public sealed class AddVectorEmbeddingEnrichmentEtlCommand : AddEtlCommand<VectorEmbeddingEnrichmentEtlConfiguration, AiConnectionString>
     {
-        public AddAiEtlCommand()
+        public AddVectorEmbeddingEnrichmentEtlCommand()
         {
             // for deserialization
         }
 
-        public AddAiEtlCommand(AiEtlConfiguration configuration, string databaseName, string uniqueRequestId) : base(configuration, databaseName, uniqueRequestId)
+        public AddVectorEmbeddingEnrichmentEtlCommand(VectorEmbeddingEnrichmentEtlConfiguration configuration, string databaseName, string uniqueRequestId) : base (configuration, databaseName, uniqueRequestId)
         {
-
+            
         }
 
         public override void UpdateDatabaseRecord(DatabaseRecord record, long etag)
         {
-            Add(ref record.AiEtls, record, etag);
+            Add(ref record.VectorEmbeddingEnrichmentEtls, record, etag);
         }
     }
 }
