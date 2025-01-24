@@ -10,6 +10,7 @@ using Raven.Client.Documents.Operations.Backups;
 using Raven.Client.Documents.Operations.Configuration;
 using Raven.Client.Documents.Operations.DataArchival;
 using Raven.Client.Documents.Operations.ETL;
+using Raven.Client.Documents.Operations.ETL.AI;
 using Raven.Client.Documents.Operations.ETL.ElasticSearch;
 using Raven.Client.Documents.Operations.ETL.OLAP;
 using Raven.Client.Documents.Operations.ETL.Queue;
@@ -1475,6 +1476,38 @@ namespace Raven.Server.ServerWide
                 }
 
                 return _snowflakeConnectionStrings;
+            }
+        }
+        
+        private Dictionary<string, AiEtlConnectionString> _aiConnectionStrings;
+
+        public Dictionary<string, AiEtlConnectionString> AiConnectionStrings
+        {
+            get
+            {
+                if (_materializedRecord != null)
+                    return _materializedRecord.AiConnectionStrings;
+
+                if (_aiConnectionStrings == null)
+                {
+                    _aiConnectionStrings = new Dictionary<string, AiEtlConnectionString>();
+                    if (_record.TryGet(nameof(DatabaseRecord.AiConnectionStrings), out BlittableJsonReaderObject obj) && obj != null)
+                    {
+                        var propertyDetails = new BlittableJsonReaderObject.PropertyDetails();
+                        for (var i = 0; i < obj.Count; i++)
+                        {
+                            obj.GetPropertyByIndex(i, ref propertyDetails);
+
+                            if (propertyDetails.Value == null)
+                                continue;
+
+                            if (propertyDetails.Value is BlittableJsonReaderObject bjro)
+                                _aiConnectionStrings[propertyDetails.Name] = JsonDeserializationCluster.AiConnectionString(bjro);
+                        }
+                    }
+                }
+
+                return _aiConnectionStrings;
             }
         }
 

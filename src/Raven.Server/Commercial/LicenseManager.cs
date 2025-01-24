@@ -1605,6 +1605,12 @@ namespace Raven.Server.Commercial
             // throw GenerateLicenseLimit(LimitType.SnowflakeEtl, message);
         }
 
+        public void AssertCanAddAiEtl()
+        {
+            if (IsValid(out var licenseLimit) == false)
+                throw licenseLimit;
+        }
+
         public void AssertCanAddConcurrentDataSubscriptions()
         {
             if (IsValid(out var licenseLimit) == false)

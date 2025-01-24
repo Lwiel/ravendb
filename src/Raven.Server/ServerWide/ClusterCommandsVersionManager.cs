@@ -195,6 +195,9 @@ namespace Raven.Server.ServerWide
             [nameof(UpdateSnowflakeEtlCommand)] = 62_000,
             [nameof(PutSnowflakeConnectionStringCommand)] = 62_000,
             [nameof(RemoveSnowflakeConnectionStringCommand)] = 62_000,
+            
+            [nameof(PutAiConnectionStringCommand)] = 70_000,
+            // todo remove
         };
 
         public bool CanPutCommand(string command)

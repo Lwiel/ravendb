@@ -2201,6 +2201,18 @@ namespace Raven.Server.ServerWide
 
                         command = new AddSnowflakeEtlCommand(snowflakeEtl, databaseName, raftRequestId);
                         break;
+                    
+                    case EtlType.Ai:
+                        var aiEtl = JsonDeserializationCluster.AiEtlConfiguration(etlConfiguration);
+                        aiEtl.Validate(out var aiEtlErr, validateName: false, validateConnection: false);
+                        if (ValidateConnectionString(rawRecord, aiEtl.ConnectionStringName, aiEtl.EtlType) == false)
+                            aiEtlErr.Add($"Could not find connection string named '{aiEtl.ConnectionStringName}'. Please supply an existing connection string.");
+                        
+                        ThrowInvalidConfigurationIfNecessary(etlConfiguration, aiEtlErr);
+
+                        command = new AddAiEtlCommand(aiEtl, databaseName, raftRequestId);
+                        
+                        break;
 
                     default:
                         throw new NotSupportedException($"Unknown ETL configuration type. Configuration: {etlConfiguration}");
@@ -2329,6 +2341,9 @@ namespace Raven.Server.ServerWide
                 case EtlType.Snowflake:
                     var snowflakeConnectionString = databaseRecord.SnowflakeConnectionStrings;
                     return snowflakeConnectionString != null && snowflakeConnectionString.TryGetValue(connectionStringName, out _);
+                case EtlType.Ai:
+                    var aiConnectionString = databaseRecord.AiConnectionStrings;
+                    return aiConnectionString != null && aiConnectionString.TryGetValue(connectionStringName, out _);
                 default:
                     throw new NotSupportedException($"Unknown ETL type. Type: {etlType}");
             }
@@ -2475,6 +2490,9 @@ namespace Raven.Server.ServerWide
                 case ConnectionStringType.Snowflake:
                     command = new PutSnowflakeConnectionStringCommand(JsonDeserializationCluster.SnowflakeConnectionString(connectionString), databaseName,
                         raftRequestId);
+                    break;
+                case ConnectionStringType.Ai:
+                    command = new PutAiConnectionStringCommand(JsonDeserializationCluster.AiConnectionString(connectionString), databaseName, raftRequestId);
                     break;
                 default:
                     throw new NotSupportedException($"Unknown connection string type: {connectionStringType}");
