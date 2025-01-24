@@ -76,7 +76,7 @@ public sealed class AiEtlDocumentTransformer : EtlTransformer<AiEtlItem, Embeddi
             if (fieldValue is LazyStringValue lsv)
             {
                 result.Add(fieldName, new List<string>() { lsv });
-                _currentRun.CurrentRun.Add(new EmbeddingRepresentation() { Value = lsv });
+                _currentRun.CurrentRun.Add(new EmbeddingRepresentation() { Value = lsv, OriginDocumentId = item.DocumentId, OriginPropertyName = fieldName });
             }
             // todo lazy
             else if (fieldValue is List<string> list)
@@ -84,7 +84,7 @@ public sealed class AiEtlDocumentTransformer : EtlTransformer<AiEtlItem, Embeddi
                 result.Add(fieldName, list);
 
                 foreach (var value in list)
-                    _currentRun.CurrentRun.Add(new EmbeddingRepresentation() { Value = value });
+                    _currentRun.CurrentRun.Add(new EmbeddingRepresentation() { Value = value, OriginDocumentId = item.DocumentId, OriginPropertyName = fieldName });
             }
             else
                 throw new Exception();

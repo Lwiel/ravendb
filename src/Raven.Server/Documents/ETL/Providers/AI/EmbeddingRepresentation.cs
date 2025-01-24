@@ -6,4 +6,6 @@ public class EmbeddingRepresentation
     public float[] EmbeddingValue { get; set; }
     public string ValueHash { get; set; }
     public string AttachmentName { get; set; }
+    public string OriginDocumentId { get; set; }
+    public string OriginPropertyName { get; set; }
 }

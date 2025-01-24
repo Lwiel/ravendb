@@ -1535,34 +1535,6 @@ namespace Raven.Server.ServerWide
             }
         }
 
-        private Dictionary<string, AiConnectionString> _aiConnectionStrings;
-
-        public Dictionary<string, AiConnectionString> AiConnectionStrings
-        {
-            get
-            {
-                if (_materializedRecord != null)
-                    return _materializedRecord.AiConnectionStrings;
-                if (_aiConnectionStrings == null)
-                {
-                    _aiConnectionStrings = new Dictionary<string, AiConnectionString>();
-                    if (_record.TryGet(nameof(DatabaseRecord.AiConnectionStrings), out BlittableJsonReaderObject obj) && obj != null)
-                    {
-                        var propertyDetails = new BlittableJsonReaderObject.PropertyDetails();
-                        for (var i = 0; i < obj.Count; i++)
-                        {
-                            obj.GetPropertyByIndex(i, ref propertyDetails);
-                            if (propertyDetails.Value == null)
-                                continue;
-                            if (propertyDetails.Value is BlittableJsonReaderObject bjro)
-                                _aiConnectionStrings[propertyDetails.Name] = JsonDeserializationCluster.AiConnectionString(bjro);
-                        }
-                    }
-                }
-                return _aiConnectionStrings;
-            }
-        }
-
         public GetConnectionStringsResult GetConnectionStrings() =>
             new()
             {
