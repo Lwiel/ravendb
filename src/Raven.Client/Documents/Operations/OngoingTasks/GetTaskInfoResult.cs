@@ -38,7 +38,7 @@ namespace Raven.Client.Documents.Operations.OngoingTasks
         PullReplicationAsHub,
         PullReplicationAsSink,
         QueueSink,
-        VectorEmbeddingEnrichmentEtl,
+        AiEtl,
     }
 
     public enum OngoingTaskState
@@ -395,16 +395,16 @@ namespace Raven.Client.Documents.Operations.OngoingTasks
         }
     }
 
-    public sealed class OngoingTaskVectorEmbeddingEnrichmentEtl : OngoingTask
+    public sealed class OngoingTaskAiEtl : OngoingTask
     {
-        public OngoingTaskVectorEmbeddingEnrichmentEtl()
+        public OngoingTaskAiEtl()
         {
-            TaskType = OngoingTaskType.VectorEmbeddingEnrichmentEtl;
+            TaskType = OngoingTaskType.AiEtl;
         }
 
         public string ConnectionStringName { get; set; }
 
-        public VectorEmbeddingEnrichmentEtlConfiguration Configuration { get; set; }
+        public AiEtlConfiguration Configuration { get; set; }
 
         public override DynamicJsonValue ToJson()
         {
