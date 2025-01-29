@@ -24,6 +24,7 @@ interface DefaultConnectionStringsProps {
     hasOlapEtl: boolean;
     hasElasticSearchEtl: boolean;
     hasQueueEtl: boolean;
+    hasAiEtl: boolean;
 }
 
 export const DefaultConnectionStrings: StoryObj<DefaultConnectionStringsProps> = {
@@ -65,6 +66,7 @@ export const DefaultConnectionStrings: StoryObj<DefaultConnectionStringsProps> =
             HasOlapEtl: props.hasOlapEtl,
             HasElasticSearchEtl: props.hasElasticSearchEtl,
             HasQueueEtl: props.hasQueueEtl,
+            HasAiEtl: props.hasAiEtl,
         });
 
         return <ConnectionStrings />;
@@ -81,6 +83,7 @@ export const DefaultConnectionStrings: StoryObj<DefaultConnectionStringsProps> =
         hasOlapEtl: true,
         hasElasticSearchEtl: true,
         hasQueueEtl: true,
+        hasAiEtl: true,
     },
     argTypes: {
         licenseType: licenseArgType,
