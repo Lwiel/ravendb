@@ -36,6 +36,7 @@ using Raven.Server.Documents.Commands.Indexes;
 using Raven.Server.Documents.Commands.OngoingTasks;
 using Raven.Server.Documents.Commands.Revisions;
 using Raven.Server.Documents.Commands.Tombstones;
+using Raven.Server.Documents.ETL.Providers.AI.Test;
 using Raven.Server.Documents.ETL.Providers.ElasticSearch.Test;
 using Raven.Server.Documents.ETL.Providers.OLAP.Test;
 using Raven.Server.Documents.ETL.Providers.Queue.Test;
@@ -140,6 +141,8 @@ namespace Raven.Server.Json
         public static readonly Func<BlittableJsonReaderObject, TestQueueEtlScript> TestQueueEtlScript = GenerateJsonDeserializationRoutine<TestQueueEtlScript>();
 
         public static readonly Func<BlittableJsonReaderObject, TestQueueSinkScript> TestQueueSinkScript = GenerateJsonDeserializationRoutine<TestQueueSinkScript>();
+
+        public static readonly Func<BlittableJsonReaderObject, TestAiEtlScript> TestAiEtlScript = GenerateJsonDeserializationRoutine<TestAiEtlScript>();
 
         public static readonly Func<BlittableJsonReaderObject, SubscriptionCreationOptions> SubscriptionCreationParams = GenerateJsonDeserializationRoutine<SubscriptionCreationOptions>();
 
