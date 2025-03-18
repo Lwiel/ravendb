@@ -167,8 +167,8 @@ namespace Raven.Server.Documents.Queries
 
             return new TermQuery(new Term(fieldName, term)) { Boost = boost.Value };
         }
-
-        public static Query AnalyzedTerm(string fieldName, string term, LuceneTermType type, Analyzer analyzer, float? boost = null, float? similarity = null)
+        
+        public static bool TryGetAnalyzedTerm(string fieldName, string term, LuceneTermType type, Analyzer analyzer, out Query query, float? boost = null)
         {
             if (type != LuceneTermType.String && type != LuceneTermType.Prefix && type != LuceneTermType.WildCard)
                 throw new InvalidOperationException("Analyzed terms can be only created from string values.");
@@ -178,10 +178,12 @@ namespace Raven.Server.Documents.Queries
 
             if (type == LuceneTermType.WildCard)
             {
-                return new WildcardQuery(GetAnalyzedWildcardTerm(fieldName, term, analyzer))
+                query = new WildcardQuery(GetAnalyzedWildcardTerm(fieldName, term, analyzer))
                 {
                     Boost = boost.Value
                 };
+
+                return true;
             }
 
             var tokenStream = analyzer.ReusableTokenStream(fieldName, new StringReader(term));
@@ -199,7 +201,8 @@ namespace Raven.Server.Documents.Queries
                 {
                     var first = terms[0];
                     var actualTerm = first[first.Length - 1] == AsteriskChar ? first.Substring(0, first.Length - 1) : first;
-                    return new PrefixQuery(new Term(fieldName, actualTerm)) { Boost = boost.Value };
+                    query = new PrefixQuery(new Term(fieldName, actualTerm)) { Boost = boost.Value };
+                    return true;
                 }
                 // if the term that we are trying to prefix has been removed entirely by the analyzer, then we are going
                 // to cheat a bit, and check for both the term in as specified and the term in lower case format so we can
@@ -214,15 +217,24 @@ namespace Raven.Server.Documents.Queries
                     },
                     Boost = boost.Value
                 };
-                return booleanQuery;
+                query = booleanQuery;
+                return true;
+            }
+
+            if (terms.Count == 0)
+            {
+                query = null;
+                return false;
             }
 
             if (terms.Count == 1)
             {
-                return new TermQuery(new Term(fieldName, terms[0]))
+                query = new TermQuery(new Term(fieldName, terms[0]))
                 {
                     Boost = boost.Value
                 };
+                
+                return true;
             }
 
             var pq = new PhraseQuery
@@ -233,7 +245,8 @@ namespace Raven.Server.Documents.Queries
             foreach (var t in terms)
                 pq.Add(new Term(fieldName, t));
 
-            return pq;
+            query = pq;
+            return true;
         }
 
         public static unsafe string GetTermValue(string value, LuceneTermType type, bool exact)
