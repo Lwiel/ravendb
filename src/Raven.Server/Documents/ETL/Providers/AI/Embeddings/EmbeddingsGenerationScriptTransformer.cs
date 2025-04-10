@@ -156,12 +156,12 @@ internal sealed class EmbeddingsGenerationScriptTransformer : EtlTransformer<Emb
             case ConverterBase.ValueType.Enum:
             case ConverterBase.ValueType.Boolean:
             case ConverterBase.ValueType.String:
-                values.Add((value.ToString(),chunkingOptions));
+                values.Add((value.ToString(), chunkingOptions));
                 break;
 
             case ConverterBase.ValueType.Char:
                 if (value is char c)
-                    values.Add( (char.ToString(c), chunkingOptions));
+                    values.Add((char.ToString(c), chunkingOptions));
                 break;
 
             case ConverterBase.ValueType.LazyCompressedString:
@@ -176,13 +176,13 @@ internal sealed class EmbeddingsGenerationScriptTransformer : EtlTransformer<Emb
             case ConverterBase.ValueType.DateTime:
                 var dateTime = (DateTime)value;
                 var dateAsBytes = dateTime.GetDefaultRavenFormat();
-                values.Add((dateAsBytes,chunkingOptions));
+                values.Add((dateAsBytes, chunkingOptions));
                 break;
 
             case ConverterBase.ValueType.DateTimeOffset:
                 var dateTimeOffset = (DateTimeOffset)value;
                 var dateTimeOffsetBytes = dateTimeOffset.UtcDateTime.GetDefaultRavenFormat(isUtc: true);
-                values.Add((dateTimeOffsetBytes,chunkingOptions));
+                values.Add((dateTimeOffsetBytes, chunkingOptions));
                 break;
 
             case ConverterBase.ValueType.TimeSpan:
@@ -246,11 +246,11 @@ internal sealed class EmbeddingsGenerationScriptTransformer : EtlTransformer<Emb
 
             case ConverterBase.ValueType.DynamicNull:
             case ConverterBase.ValueType.Null:
-                values.Add(("null",chunkingOptions));
+                values.Add(("null", chunkingOptions));
                 break;
 
             case ConverterBase.ValueType.EmptyString:
-                values.Add((string.Empty,chunkingOptions));
+                values.Add(("empty string", chunkingOptions));
                 break;
 
             default:

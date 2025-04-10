@@ -978,12 +978,11 @@ public class EmbeddingsGenerator(DocumentDatabase database, RavenLogger logger, 
                             attachmentsToRemove.Remove(val.ToString());
                         }
                     }
-
                 }
             }
         }
 
-    public void Delete(string documentId)
+        public void Delete(string documentId)
         {
             _toDelete.Add(documentId);
         }
