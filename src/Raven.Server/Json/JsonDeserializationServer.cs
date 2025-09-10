@@ -27,6 +27,7 @@ using Raven.Client.ServerWide.Operations.TrafficWatch;
 using Raven.Client.ServerWide.Tcp;
 using Raven.Server.Commercial;
 using Raven.Server.Dashboard;
+using Raven.Server.Dashboard.Cluster;
 using Raven.Server.Documents.Commands;
 using Raven.Server.Documents.Commands.ETL;
 using Raven.Server.Documents.Commands.Indexes;
@@ -325,6 +326,8 @@ namespace Raven.Server.Json
 
         internal static readonly Func<BlittableJsonReaderObject, AttachmentHandler.MissingAttachmentInfo> MissingAttachmentInfo = GenerateJsonDeserializationRoutine<AttachmentHandler.MissingAttachmentInfo>();
 
+        internal static readonly Func<BlittableJsonReaderObject, NotificationsSummaryRequestConfig> NotificationsSummaryRequestConfig = GenerateJsonDeserializationRoutine<NotificationsSummaryRequestConfig>();
+        
         public sealed class Parameters
         {
             private Parameters()

@@ -29,6 +29,8 @@ namespace Raven.Server.Dashboard.Cluster
         
         OngoingTasks,
 
-        GcInfo
+        GcInfo,
+        
+        NotificationsSummary
     }
 }

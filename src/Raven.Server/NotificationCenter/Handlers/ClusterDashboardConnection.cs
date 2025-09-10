@@ -165,7 +165,7 @@ namespace Raven.Server.NotificationCenter.Handlers
 
         private async Task WatchCommand(int widgetId, ClusterDashboardNotificationType type, BlittableJsonReaderObject configuration)
         {
-            var notificationSender = await _clusterDashboardNotifications.CreateNotificationSender(widgetId, type);
+            var notificationSender = await _clusterDashboardNotifications.CreateNotificationSender(widgetId, type, configuration);
 
             if (notificationSender != null)
             {

@@ -87,6 +87,11 @@ namespace Raven.Server.Dashboard
             return GetValue<List<AbstractDashboardNotification>>(DatabasesInfoKey).OfType<DrivesUsage>().First();
         }
 
+        public DatabaseNotificationsSummary GetDatabaseNotificationsSummary()
+        {
+            return GetValue<List<AbstractDashboardNotification>>(DatabasesInfoKey).OfType<DatabaseNotificationsSummary>().First();
+        }
+
         private sealed class AggregatedWatchInfo
         {
             public readonly DatabasesInfo DatabasesInfo = new DatabasesInfo();
@@ -94,6 +99,7 @@ namespace Raven.Server.Dashboard
             public readonly IndexingSpeed IndexingSpeed = new IndexingSpeed();
             public readonly TrafficWatch TrafficWatch = new TrafficWatch();
             public readonly DrivesUsage DrivesUsage = new DrivesUsage();
+            public readonly DatabaseNotificationsSummary DatabaseNotificationsSummary = new DatabaseNotificationsSummary();
         }
 
         public static IEnumerable<AbstractDashboardNotification> FetchDatabasesInfo(ServerStore serverStore, CanAccessDatabase isValidFor, bool collectOngoingTasks, CancellationToken token)
@@ -207,6 +213,7 @@ namespace Raven.Server.Dashboard
             var indexingSpeed = trafficWatchInfo.IndexingSpeed;
             var trafficWatch = trafficWatchInfo.TrafficWatch;
             var databasesOngoingTasksInfo = trafficWatchInfo.DatabasesOngoingTasksInfo;
+            var databaseNotificationsSummary = trafficWatchInfo.DatabaseNotificationsSummary;
             var rate = (int)RefreshRate.TotalSeconds;
 
             try
@@ -247,6 +254,13 @@ namespace Raven.Server.Dashboard
                     TimeSeriesWriteBytesPerSecond = database.Metrics.TimeSeries.BytesPutsPerSec.GetRate(rate)
                 };
                 trafficWatch.Items.Add(trafficWatchItem);
+
+                var databaseNotificationsSummaryItem = new DatabaseNotificationsSummaryItem()
+                {
+                    Database = database.Name,
+                };
+                
+                databaseNotificationsSummary.Items.Add(databaseNotificationsSummaryItem);
 
                 var ongoingTasksInfoItem = GetOngoingTasksInfoItem(database, serverStore, context, out var ongoingTasksCount);
                 if (collectOngoingTasks)

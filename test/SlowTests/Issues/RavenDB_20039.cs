@@ -159,7 +159,7 @@ public class RavenDB_20039 : RavenTestBase
 
                 using (var tx = context.OpenWriteTransaction())
                 {
-                    database.NotificationCenter.Storage.Store(context.GetLazyString(hint.Id), hint.CreatedAt, null, hintWithLegacySlowWriteInfo, tx);
+                    database.NotificationCenter.Storage.Store(context.GetLazyString(hint.Id), hint.CreatedAt, null, context.GetLazyString(hint.HintType.ToString()), context.GetLazyString(nameof(PerformanceHint)), hintWithLegacySlowWriteInfo, tx);
                     tx.Commit();
                 }
             }

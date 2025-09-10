@@ -58,5 +58,17 @@ namespace Raven.Server.NotificationCenter.Notifications
                 [nameof(Database)] = Database
             };
         }
+        
+        public string GetCategory()
+        {
+            var notificationCategory = Type switch
+            {
+                NotificationType.PerformanceHint => ((PerformanceHint)this).HintType.ToString(),
+                NotificationType.AlertRaised => ((AlertRaised)this).AlertType.ToString(),
+                _ => null
+            };
+            
+            return notificationCategory;
+        }
     }
 }

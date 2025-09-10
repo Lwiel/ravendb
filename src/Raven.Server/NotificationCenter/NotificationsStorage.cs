@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Raven.Client.Util;
+using Raven.Server.Dashboard.Cluster;
 using Raven.Server.NotificationCenter.Notifications;
 using Raven.Server.Rachis.Commands;
 using Raven.Server.ServerWide;
@@ -78,9 +79,12 @@ namespace Raven.Server.NotificationCenter
                 if (_logger.IsInfoEnabled)
                     _logger.Info($"Saving notification '{notification.Id}'.");
 
+                var notificationType = notification.Type.ToString();
+                var notificationCategory = notification.GetCategory();
+
                 using (var json = context.ReadObject(notification.ToJson(), "notification", BlittableJsonDocumentBuilder.UsageMode.ToDisk))
                 {
-                    var command = new StoreNotificationCommand(context.GetLazyString(notification.Id), notification.CreatedAt, postponeUntil, json, this);
+                    var command = new StoreNotificationCommand(context.GetLazyString(notification.Id), notification.CreatedAt, postponeUntil, context.GetLazyString(notificationType), context.GetLazyString(notificationCategory), json, this);
                     ServerStore.Engine.TxMerger.EnqueueSync(command);
                 }
             }
@@ -90,7 +94,7 @@ namespace Raven.Server.NotificationCenter
 
         private readonly long _postponeDateNotSpecified = Bits.SwapBytes(long.MaxValue);
 
-        internal void Store(LazyStringValue id, DateTime createdAt, DateTime? postponedUntil, BlittableJsonReaderObject action, RavenTransaction tx)
+        internal void Store(LazyStringValue id, DateTime createdAt, DateTime? postponedUntil, LazyStringValue notificationType, LazyStringValue notificationCategory, BlittableJsonReaderObject action, RavenTransaction tx)
         {
             var table = tx.InnerTransaction.OpenTable(Documents.Schemas.Notifications.Current, TableName);
 
@@ -106,6 +110,8 @@ namespace Raven.Server.NotificationCenter
                 tvb.Add((byte*)&createdAtTicks, sizeof(long));
                 tvb.Add((byte*)&postponedUntilTicks, sizeof(long));
                 tvb.Add(action.BasePointer, action.Size);
+                tvb.Add(notificationType.Buffer, notificationType.Size);
+                tvb.Add(notificationCategory.Buffer, notificationCategory.Size);
 
                 table.Set(tvb);
             }
@@ -224,6 +230,44 @@ namespace Raven.Server.NotificationCenter
             }
         }
 
+        
+        public IEnumerable<NotificationTableValue> GetAll(TransactionOperationContext<RavenTransaction> context)
+        {
+            var table = context.Transaction.InnerTransaction.OpenTable(Documents.Schemas.Notifications.Current, TableName);
+            
+            foreach (var notification in table.SeekByPrimaryKey(Slices.BeforeAllKeys, 0))
+            {
+                yield return Read(context, ref notification.Reader);
+            }
+        }
+        
+
+        public IEnumerable<NotificationTableValue> GetFilteredByConfig(TransactionOperationContext<RavenTransaction> context, NotificationsSummaryRequestConfig config)
+        {
+            var table = context.Transaction.InnerTransaction.OpenTable(Documents.Schemas.Notifications.Current, TableName);
+            if (table == null)
+                yield break;
+            
+            foreach (var categoryNamesForNotificationType in config.CategoryNamesForNotificationType)
+            {
+                var notificationType = categoryNamesForNotificationType.NotificationType.ToString();
+                var categoryNames = categoryNamesForNotificationType.CategoryNames;
+
+                using (Slice.From(context.Transaction.InnerTransaction.Allocator, notificationType, out var typeSlice))
+                {
+                    foreach (var tvr in table.SeekForwardFrom(Documents.Schemas.Notifications.Current.Indexes[Documents.Schemas.Notifications.ByCategoryName], typeSlice, 0))
+                    {
+                        var value = Read(context, ref tvr.Result.Reader);
+
+                        if (categoryNames.Contains(value.CategoryName.ToString()))
+                            yield return value;
+                        else
+                            value.Dispose();
+                    }
+                }
+            }
+        }
+
         public bool Delete(string id, RavenTransaction existingTransaction = null)
         {
             bool deleteResult;
@@ -305,21 +349,29 @@ namespace Raven.Server.NotificationCenter
 
         private NotificationTableValue Read(JsonOperationContext context, ref TableValueReader reader)
         {
-            var createdAt = new DateTime(Bits.SwapBytes(*(long*)reader.Read(Documents.Schemas.Notifications.NotificationsTable.CreatedAtIndex, out int size)));
+            var createdAt = new DateTime(Bits.SwapBytes(*(long*)reader.Read(Documents.Schemas.Notifications.NotificationsTable.CreatedAtIndex, out _)));
 
-            var postponeUntilTicks = *(long*)reader.Read(Documents.Schemas.Notifications.NotificationsTable.PostponedUntilIndex, out size);
+            var postponeUntilTicks = *(long*)reader.Read(Documents.Schemas.Notifications.NotificationsTable.PostponedUntilIndex, out _);
 
             DateTime? postponedUntil = null;
             if (postponeUntilTicks != _postponeDateNotSpecified)
                 postponedUntil = new DateTime(Bits.SwapBytes(postponeUntilTicks));
 
-            var jsonPtr = reader.Read(Documents.Schemas.Notifications.NotificationsTable.JsonIndex, out size);
+            var jsonPtr = reader.Read(Documents.Schemas.Notifications.NotificationsTable.JsonIndex, out int jsonSize);
+            
+            var typePtr = reader.Read(Documents.Schemas.Notifications.NotificationsTable.NotificationTypeIndex, out int typeSize);
+            var type = context.AllocateStringValue(null, typePtr, typeSize);
+            
+            var categoryPtr = reader.Read(Documents.Schemas.Notifications.NotificationsTable.CategoryNameIndex, out int categorySize);
+            var category = context.AllocateStringValue(null, categoryPtr, categorySize);
 
             return new NotificationTableValue
             {
                 CreatedAt = createdAt,
                 PostponedUntil = postponedUntil,
-                Json = new BlittableJsonReaderObject(jsonPtr, size, context)
+                Json = new BlittableJsonReaderObject(jsonPtr, jsonSize, context),
+                NotificationType = type,
+                CategoryName = category
             };
         }
 
@@ -343,7 +395,7 @@ namespace Raven.Server.NotificationCenter
             using (ContextPool.AllocateOperationContext(out TransactionOperationContext context))
             using (var tx = context.OpenReadTransaction())
             {
-                using(var item = Get(id, context, tx))
+                using (var item = Get(id, context, tx))
                 {
                     if (item == null)
                         return;
@@ -352,7 +404,7 @@ namespace Raven.Server.NotificationCenter
 
                     Memory.Copy(itemCopy.Address, item.Json.BasePointer, item.Json.Size);
 
-                    var command = new StoreNotificationCommand(context.GetLazyString(id), item.CreatedAt, postponeUntil, new BlittableJsonReaderObject(itemCopy.Address, item.Json.Size, context), this);
+                    var command = new StoreNotificationCommand(context.GetLazyString(id), item.CreatedAt, postponeUntil, item.NotificationType, item.CategoryName, new BlittableJsonReaderObject(itemCopy.Address, item.Json.Size, context), this);
                     ServerStore.Engine.TxMerger.EnqueueSync(command);
                 }
             }

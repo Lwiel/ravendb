@@ -10,6 +10,10 @@ namespace Raven.Server.NotificationCenter
         public DateTime CreatedAt;
 
         public DateTime? PostponedUntil;
+        
+        public LazyStringValue NotificationType;
+        
+        public LazyStringValue CategoryName;
 
         public void Dispose()
         {

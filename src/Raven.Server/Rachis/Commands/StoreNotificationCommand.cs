@@ -6,14 +6,14 @@ using Sparrow.Json;
 
 namespace Raven.Server.Rachis.Commands
 {
-    public class StoreNotificationCommand(LazyStringValue id, DateTime createdAt, DateTime? postponedUntil, BlittableJsonReaderObject bjro, NotificationsStorage storage)
+    public class StoreNotificationCommand(LazyStringValue id, DateTime createdAt, DateTime? postponedUntil, LazyStringValue notificationType, LazyStringValue notificationCategory, BlittableJsonReaderObject bjro, NotificationsStorage storage)
         : MergedTransactionCommand<ClusterOperationContext, ClusterTransaction>
     {
         private readonly NotificationsStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
 
         protected override long ExecuteCmd(ClusterOperationContext context)
         {
-            _storage.Store(id, createdAt, postponedUntil,  bjro, context.Transaction);
+            _storage.Store(id, createdAt, postponedUntil, notificationType, notificationCategory, bjro, context.Transaction);
             return 1;
         }
 

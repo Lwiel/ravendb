@@ -15,8 +15,10 @@ namespace Raven.Server.Storage.Schema
         internal sealed class CurrentVersion
         {
             public const int ServerVersion = 62_000;
+            //public const int ServerVersion = 62_001;
 
             public const int ConfigurationVersion = 50_000;
+            //public const int ConfigurationVersion = 62_000;
 
             public const int DocumentsVersion = 62_000;
 
@@ -116,7 +118,7 @@ namespace Raven.Server.Storage.Schema
                     _documentsStorage.DocumentDatabase.AddToInitLog?.Invoke(LogMode.Information, msg);
                 }
 
-                bool result =  updater.Update(new UpdateStep(transactions)
+                bool result = updater.Update(new UpdateStep(transactions)
                 {
                     ConfigurationStorage = _configurationStorage,
                     DocumentsStorage = _documentsStorage,
