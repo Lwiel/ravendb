@@ -230,44 +230,6 @@ namespace Raven.Server.NotificationCenter
             }
         }
 
-        
-        public IEnumerable<NotificationTableValue> GetAll(TransactionOperationContext<RavenTransaction> context)
-        {
-            var table = context.Transaction.InnerTransaction.OpenTable(Documents.Schemas.Notifications.Current, TableName);
-            
-            foreach (var notification in table.SeekByPrimaryKey(Slices.BeforeAllKeys, 0))
-            {
-                yield return Read(context, ref notification.Reader);
-            }
-        }
-        
-
-        public IEnumerable<NotificationTableValue> GetFilteredByConfig(TransactionOperationContext<RavenTransaction> context, NotificationsSummaryRequestConfig config)
-        {
-            var table = context.Transaction.InnerTransaction.OpenTable(Documents.Schemas.Notifications.Current, TableName);
-            if (table == null)
-                yield break;
-            
-            foreach (var categoryNamesForNotificationType in config.CategoryNamesForNotificationType)
-            {
-                var notificationType = categoryNamesForNotificationType.NotificationType.ToString();
-                var categoryNames = categoryNamesForNotificationType.CategoryNames;
-
-                using (Slice.From(context.Transaction.InnerTransaction.Allocator, notificationType, out var typeSlice))
-                {
-                    foreach (var tvr in table.SeekForwardFrom(Documents.Schemas.Notifications.Current.Indexes[Documents.Schemas.Notifications.ByCategoryName], typeSlice, 0))
-                    {
-                        var value = Read(context, ref tvr.Result.Reader);
-
-                        if (categoryNames.Contains(value.CategoryName.ToString()))
-                            yield return value;
-                        else
-                            value.Dispose();
-                    }
-                }
-            }
-        }
-
         public bool Delete(string id, RavenTransaction existingTransaction = null)
         {
             bool deleteResult;
@@ -345,6 +307,38 @@ namespace Raven.Server.NotificationCenter
             }
 
             return count;
+        }
+
+        public Dictionary<string, Dictionary<string, long>> GetNotificationCounts()
+        {
+            var result = new Dictionary<string, Dictionary<string, long>>();
+
+            using (ContextPool.AllocateOperationContext(out TransactionOperationContext context))
+            using (context.OpenReadTransaction())
+            {
+                var table = context.Transaction.InnerTransaction.OpenTable(Documents.Schemas.Notifications.Current, TableName);
+                if (table == null)
+                    return result;
+
+                foreach (var action in ReadActionsByCreatedAtIndex(context))
+                {
+                    var type = action.NotificationType;
+                    var category = action.CategoryName;
+                    
+                    if (result.TryGetValue(type, out var categoryDict) == false)
+                    {
+                        categoryDict = new Dictionary<string, long>();
+                        result[type] = categoryDict;
+                    }
+                    
+                    if (categoryDict.TryGetValue(category, out var count) == false)
+                        categoryDict[category] = 1;
+                    else
+                        categoryDict[category] = count + 1;
+                }
+            }
+
+            return result;
         }
 
         private NotificationTableValue Read(JsonOperationContext context, ref TableValueReader reader)

@@ -6,7 +6,7 @@ namespace Raven.Server.Dashboard.Cluster.Notifications;
 
 public class NotificationsSummaryPayload : AbstractClusterDashboardNotification
 {
-    public List<DatabaseNotificationsSummary> NotificationsSummary { get; set; }
+    public List<DatabaseNotificationsSummary> NotificationsSummary { get; set; } = [];
     
     public override ClusterDashboardNotificationType Type => ClusterDashboardNotificationType.NotificationsSummary;
     

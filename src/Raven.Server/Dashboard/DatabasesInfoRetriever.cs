@@ -198,6 +198,7 @@ namespace Raven.Server.Dashboard
             yield return trafficWatchInfo.IndexingSpeed;
             yield return trafficWatchInfo.TrafficWatch;
             yield return trafficWatchInfo.DrivesUsage;
+            yield return trafficWatchInfo.DatabaseNotificationsSummary;
             
             if (collectOngoingTasks)
             {
@@ -255,9 +256,10 @@ namespace Raven.Server.Dashboard
                 };
                 trafficWatch.Items.Add(trafficWatchItem);
 
-                var databaseNotificationsSummaryItem = new DatabaseNotificationsSummaryItem()
+                var databaseNotificationsSummaryItem = new DatabaseNotificationsSummaryItem
                 {
                     Database = database.Name,
+                    NotificationsCounts = database.NotificationCenter.Storage.GetNotificationCounts()
                 };
                 
                 databaseNotificationsSummary.Items.Add(databaseNotificationsSummaryItem);

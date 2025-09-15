@@ -16,16 +16,28 @@ public sealed class DatabaseNotificationsSummary : AbstractDashboardNotification
 public sealed class DatabaseNotificationsSummaryItem : IDynamicJson
 {
     public string Database { get; set; }
-    public int AlertRaisedNotificationsCount { get; set; }
-    public int PerformanceHintNotificationsCount { get; set; }
+    public Dictionary<string, Dictionary<string, long>> NotificationsCounts { get; set; }
         
     public DynamicJsonValue ToJson()
     {
+        var notificationsCountsJson = new DynamicJsonValue();
+        if (NotificationsCounts != null)
+        {
+            foreach (var typeKvp in NotificationsCounts)
+            {
+                var categoryDict = new DynamicJsonValue();
+                foreach (var categoryKvp in typeKvp.Value)
+                {
+                    categoryDict[categoryKvp.Key] = categoryKvp.Value;
+                }
+                notificationsCountsJson[typeKvp.Key] = categoryDict;
+            }
+        }
+        
         return new DynamicJsonValue
         {
             [nameof(Database)] = Database,
-            [nameof(AlertRaisedNotificationsCount)] = AlertRaisedNotificationsCount,
-            [nameof(PerformanceHintNotificationsCount)] = PerformanceHintNotificationsCount
+            [nameof(NotificationsCounts)] = notificationsCountsJson
         };
     }
 }

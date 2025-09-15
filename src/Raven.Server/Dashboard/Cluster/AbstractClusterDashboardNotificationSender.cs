@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Raven.Client.Util;
 using Raven.Server.Background;
 using Raven.Server.NotificationCenter;
+using Sparrow.Json;
 using Sparrow.Json.Parsing;
 
 namespace Raven.Server.Dashboard.Cluster
@@ -75,6 +76,11 @@ namespace Raven.Server.Dashboard.Cluster
             {
                 _lastSentNotification = SystemTime.UtcNow;
             }
+        }
+
+        internal virtual void UpdateConfiguration(BlittableJsonReaderObject configuration)
+        {
+            throw new NotSupportedException($"Configuration update is not supported for {GetType().Name}.");
         }
     }
 }
