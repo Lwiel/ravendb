@@ -259,7 +259,9 @@ namespace Raven.Server.Dashboard
                 var databaseNotificationsSummaryItem = new DatabaseNotificationsSummaryItem
                 {
                     Database = database.Name,
+#if NEW_SCHEMA
                     NotificationsCounts = database.NotificationCenter.Storage.GetNotificationCounts()
+#endif
                 };
                 
                 databaseNotificationsSummary.Items.Add(databaseNotificationsSummaryItem);

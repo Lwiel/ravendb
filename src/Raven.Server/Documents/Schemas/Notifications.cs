@@ -13,10 +13,12 @@ public static class Notifications
     public static readonly Slice ByCreatedAt;
 
     public static readonly Slice ByPostponedUntil;
-
+    
+#if NEW_SCHEMA
     public static readonly Slice ByNotificationType;
     
     public static readonly Slice ByCategoryName;
+#endif
 
     public const string NotificationsTree = "Notifications";
 
@@ -27,8 +29,10 @@ public static class Notifications
         public const int CreatedAtIndex = 1;
         public const int PostponedUntilIndex = 2;
         public const int JsonIndex = 3;
+#if NEW_SCHEMA
         public const int NotificationTypeIndex = 4;
         public const int CategoryNameIndex = 5;
+#endif
 #pragma warning restore 169
     }
 
@@ -38,8 +42,10 @@ public static class Notifications
         {
             Slice.From(ctx, "ByCreatedAt", ByteStringType.Immutable, out ByCreatedAt);
             Slice.From(ctx, "ByPostponedUntil", ByteStringType.Immutable, out ByPostponedUntil);
+#if NEW_SCHEMA
             Slice.From(ctx, "ByNotificationType", ByteStringType.Immutable, out ByNotificationType);
             Slice.From(ctx, "ByCategoryName", ByteStringType.Immutable, out ByCategoryName);
+#endif
         }
 
         NotificationsSchemaBase.DefineKey(new TableSchema.IndexDef
@@ -59,7 +65,7 @@ public static class Notifications
             StartIndex = NotificationsTable.PostponedUntilIndex,
             Name = ByPostponedUntil
         });
-        
+#if NEW_SCHEMA
         NotificationsSchemaBase.DefineIndex(new TableSchema.IndexDef
         {
             StartIndex = NotificationsTable.NotificationTypeIndex,
@@ -71,5 +77,6 @@ public static class Notifications
             StartIndex = NotificationsTable.CategoryNameIndex,
             Name = ByCategoryName
         });
+#endif
     }
 }

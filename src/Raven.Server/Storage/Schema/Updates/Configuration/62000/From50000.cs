@@ -3,7 +3,6 @@ using Sparrow.Json;
 using Voron;
 using Voron.Data.Tables;
 
-/*
 namespace Raven.Server.Storage.Schema.Updates.Configuration;
 
 public sealed class From50000 : ISchemaUpdate
@@ -50,4 +49,3 @@ public sealed class From50000 : ISchemaUpdate
         return false;
     }
 }
-*/

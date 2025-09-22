@@ -8,7 +8,7 @@ namespace Raven.Server.Json
 {
     public static class TableValueReaderUtil
     {
-        public static unsafe ReleaseMemory CloneTableValueReader(DocumentsOperationContext context, Table.TableValueHolder read)
+        public static unsafe ReleaseMemory CloneTableValueReader(JsonOperationContext context, Table.TableValueHolder read)
         {
             var copyReadMemory = context.GetMemory(read.Reader.Size);
             Memory.Copy(copyReadMemory.Address, read.Reader.Pointer, read.Reader.Size);
@@ -18,10 +18,10 @@ namespace Raven.Server.Json
 
         public struct ReleaseMemory : IDisposable
         {
-            private readonly DocumentsOperationContext _context;
+            private readonly JsonOperationContext _context;
             private readonly AllocatedMemoryData _copyOfMemory;
 
-            public ReleaseMemory(DocumentsOperationContext context, AllocatedMemoryData copyOfMemory)
+            public ReleaseMemory(JsonOperationContext context, AllocatedMemoryData copyOfMemory)
             {
                 _context = context;
                 _copyOfMemory = copyOfMemory;

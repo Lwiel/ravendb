@@ -14,11 +14,15 @@ namespace Raven.Server.Storage.Schema
     {
         internal sealed class CurrentVersion
         {
-            public const int ServerVersion = 62_000;
-            //public const int ServerVersion = 62_001;
-
-            public const int ConfigurationVersion = 50_000;
+#if NEW_SCHEMA
+            public const int ServerVersion = 62_001;
+            //public const int ServerVersion = 62_000;
             //public const int ConfigurationVersion = 62_000;
+            public const int ConfigurationVersion = 50_000;
+#else
+            public const int ServerVersion = 62_000;
+            public const int ConfigurationVersion = 50_000;
+#endif
 
             public const int DocumentsVersion = 62_000;
 

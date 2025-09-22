@@ -84,7 +84,12 @@ namespace Raven.Server.NotificationCenter
 
                 using (var json = context.ReadObject(notification.ToJson(), "notification", BlittableJsonDocumentBuilder.UsageMode.ToDisk))
                 {
+#if NEW_SCHEMA
                     var command = new StoreNotificationCommand(context.GetLazyString(notification.Id), notification.CreatedAt, postponeUntil, context.GetLazyString(notificationType), context.GetLazyString(notificationCategory), json, this);
+#else
+                    var command = new StoreNotificationCommand(context.GetLazyString(notification.Id), notification.CreatedAt, postponeUntil, json, this);
+#endif
+
                     ServerStore.Engine.TxMerger.EnqueueSync(command);
                 }
             }
@@ -94,8 +99,12 @@ namespace Raven.Server.NotificationCenter
 
         private readonly long _postponeDateNotSpecified = Bits.SwapBytes(long.MaxValue);
 
-        internal void Store(LazyStringValue id, DateTime createdAt, DateTime? postponedUntil, LazyStringValue notificationType, LazyStringValue notificationCategory, BlittableJsonReaderObject action, RavenTransaction tx)
-        {
+#if NEW_SCHEMA
+            internal void Store(LazyStringValue id, DateTime createdAt, DateTime? postponedUntil, LazyStringValue notificationType, LazyStringValue notificationCategory, BlittableJsonReaderObject action, RavenTransaction tx)
+#else
+            internal void Store(LazyStringValue id, DateTime createdAt, DateTime? postponedUntil, BlittableJsonReaderObject action, RavenTransaction tx)
+#endif
+            {
             var table = tx.InnerTransaction.OpenTable(Documents.Schemas.Notifications.Current, TableName);
 
             var createdAtTicks = Bits.SwapBytes(createdAt.Ticks);
@@ -110,9 +119,10 @@ namespace Raven.Server.NotificationCenter
                 tvb.Add((byte*)&createdAtTicks, sizeof(long));
                 tvb.Add((byte*)&postponedUntilTicks, sizeof(long));
                 tvb.Add(action.BasePointer, action.Size);
+#if NEW_SCHEMA
                 tvb.Add(notificationType.Buffer, notificationType.Size);
                 tvb.Add(notificationCategory.Buffer, notificationCategory.Size);
-
+#endif
                 table.Set(tvb);
             }
         }
@@ -308,7 +318,7 @@ namespace Raven.Server.NotificationCenter
 
             return count;
         }
-
+#if NEW_SCHEMA
         public Dictionary<string, Dictionary<string, long>> GetNotificationCounts()
         {
             var result = new Dictionary<string, Dictionary<string, long>>();
@@ -340,6 +350,7 @@ namespace Raven.Server.NotificationCenter
 
             return result;
         }
+#endif
 
         private NotificationTableValue Read(JsonOperationContext context, ref TableValueReader reader)
         {
@@ -352,20 +363,22 @@ namespace Raven.Server.NotificationCenter
                 postponedUntil = new DateTime(Bits.SwapBytes(postponeUntilTicks));
 
             var jsonPtr = reader.Read(Documents.Schemas.Notifications.NotificationsTable.JsonIndex, out int jsonSize);
-            
+#if NEW_SCHEMA
             var typePtr = reader.Read(Documents.Schemas.Notifications.NotificationsTable.NotificationTypeIndex, out int typeSize);
             var type = context.AllocateStringValue(null, typePtr, typeSize);
             
             var categoryPtr = reader.Read(Documents.Schemas.Notifications.NotificationsTable.CategoryNameIndex, out int categorySize);
             var category = context.AllocateStringValue(null, categoryPtr, categorySize);
-
+#endif
             return new NotificationTableValue
             {
                 CreatedAt = createdAt,
                 PostponedUntil = postponedUntil,
                 Json = new BlittableJsonReaderObject(jsonPtr, jsonSize, context),
+#if NEW_SCHEMA
                 NotificationType = type,
                 CategoryName = category
+#endif
             };
         }
 
@@ -397,8 +410,11 @@ namespace Raven.Server.NotificationCenter
                     var itemCopy = context.GetMemory(item.Json.Size);
 
                     Memory.Copy(itemCopy.Address, item.Json.BasePointer, item.Json.Size);
-
+#if NEW_SCHEMA
                     var command = new StoreNotificationCommand(context.GetLazyString(id), item.CreatedAt, postponeUntil, item.NotificationType, item.CategoryName, new BlittableJsonReaderObject(itemCopy.Address, item.Json.Size, context), this);
+#else
+                    var command = new StoreNotificationCommand(context.GetLazyString(id), item.CreatedAt, postponeUntil, new BlittableJsonReaderObject(itemCopy.Address, item.Json.Size, context), this);
+#endif                    
                     ServerStore.Engine.TxMerger.EnqueueSync(command);
                 }
             }
