@@ -424,12 +424,21 @@ namespace Raven.Server.NotificationCenter
         {
         }
 
+#if NEW_SCHEMA
+        private static string GetTableName(string resourceName)
+        {
+            return string.IsNullOrEmpty(resourceName)
+                ? $"{Documents.Schemas.Notifications.NotificationsTree}.Server"
+                : $"{Documents.Schemas.Notifications.NotificationsTree}.Database.{resourceName.ToLowerInvariant()}";
+        }
+#else
         private static string GetTableName(string resourceName)
         {
             return string.IsNullOrEmpty(resourceName)
                 ? Documents.Schemas.Notifications.NotificationsTree
                 : $"{Documents.Schemas.Notifications.NotificationsTree}.{resourceName.ToLowerInvariant()}";
         }
+#endif
 
         [DoesNotReturn]
         private static void ThrowCouldNotFindNotificationType(NotificationTableValue action)

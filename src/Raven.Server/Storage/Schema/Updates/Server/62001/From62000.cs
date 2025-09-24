@@ -1,6 +1,5 @@
 using System;
 using Raven.Server.Documents.Schemas;
-using Raven.Server.Json;
 using Raven.Server.NotificationCenter.Notifications;
 using Sparrow.Json;
 using Sparrow.Server;
@@ -14,12 +13,12 @@ namespace Raven.Server.Storage.Schema.Updates.Server
         public int From => 62_000;
         public int To => 62_001;
         public SchemaUpgrader.StorageType StorageType => SchemaUpgrader.StorageType.Server;
-        
-        public static readonly Slice ByCreatedAt;
-
-        public static readonly Slice ByPostponedUntil;
 
         private static readonly TableSchema LegacyNotificationsSchema = new TableSchema();
+
+        private const string OldNotificationsTableName = "Notifications";
+        
+        private const string TypePropertyName = "Type";
         
         private static class LegacyNotificationsTable
         {
@@ -31,10 +30,13 @@ namespace Raven.Server.Storage.Schema.Updates.Server
 
         static From62000()
         {
+            Slice byCreatedAt;
+            Slice byPostponedUntil;
+            
             using (StorageEnvironment.GetStaticContext(out var ctx))
             {
-                Slice.From(ctx, "ByCreatedAt", ByteStringType.Immutable, out ByCreatedAt);
-                Slice.From(ctx, "ByPostponedUntil", ByteStringType.Immutable, out ByPostponedUntil);
+                Slice.From(ctx, "ByCreatedAt", ByteStringType.Immutable, out byCreatedAt);
+                Slice.From(ctx, "ByPostponedUntil", ByteStringType.Immutable, out byPostponedUntil);
             }
             
             LegacyNotificationsSchema.DefineKey(new TableSchema.IndexDef
@@ -46,53 +48,92 @@ namespace Raven.Server.Storage.Schema.Updates.Server
             LegacyNotificationsSchema.DefineIndex(new TableSchema.IndexDef // might be the same ticks, so duplicates are allowed - cannot use fixed size index
             {
                 StartIndex = LegacyNotificationsTable.CreatedAtIndex,
-                Name = ByCreatedAt
+                Name = byCreatedAt
             });
 
             LegacyNotificationsSchema.DefineIndex(new TableSchema.IndexDef // might be the same ticks, so duplicates are allowed - cannot use fixed size index
             {
                 StartIndex = LegacyNotificationsTable.PostponedUntilIndex,
-                Name = ByPostponedUntil
+                Name = byPostponedUntil
             });
         }
         
-        public unsafe bool Update(UpdateStep step)
+        private static string GetOldTableName(string resourceName)
         {
-            var readTable = step.ReadTx.OpenTable(LegacyNotificationsSchema, Notifications.NotificationsTree);
+            return string.IsNullOrEmpty(resourceName)
+                ? OldNotificationsTableName
+                : $"{OldNotificationsTableName}.{resourceName.ToLowerInvariant()}";
+        }
+        
+        private static string GetNewTableName(string resourceName)
+        {
+            return string.IsNullOrEmpty(resourceName)
+                ? $"{OldNotificationsTableName}.Server"
+                : $"{OldNotificationsTableName}.Database.{resourceName.ToLowerInvariant()}";
+        }
+        
+        public bool Update(UpdateStep step)
+        {
+            var databaseNames = SchemaUpgradeExtensions.GetDatabases(step);
+
+            foreach (var databaseName in databaseNames)
+            {
+                if (ProcessResource(step, databaseName) == false)
+                    return false;
+            }
+            
+            return ProcessResource(step, resourceName: null);
+        }
+        
+        private static unsafe bool ProcessResource(UpdateStep step, string resourceName)
+        {
+            var oldTableName = GetOldTableName(resourceName);
+            var newTableName = GetNewTableName(resourceName);
+            
+            var readTable = step.ReadTx.OpenTable(LegacyNotificationsSchema, oldTableName);
 
             if (readTable == null)
                 return false;
-
-            var writeTable = step.WriteTx.OpenTable(Notifications.NotificationsSchemaBase, Notifications.NotificationsTree);
-
+            
+            Notifications.NotificationsSchemaBase.Create(step.WriteTx, newTableName, 16);
+            var writeTable = step.WriteTx.OpenTable(Notifications.NotificationsSchemaBase, newTableName);
+            var deleteTable = step.WriteTx.OpenTable(LegacyNotificationsSchema, oldTableName);
+            
             foreach (var existingNotification in readTable.SeekByPrimaryKey(Slices.BeforeAllKeys, 0))
             {
                 var readerId = existingNotification.Reader.Id;
                 
                 using (var jsonContext = JsonOperationContext.ShortTermSingleUse())
-                using (TableValueReaderUtil.CloneTableValueReader(jsonContext, existingNotification))
                 {
                     var reader = existingNotification.Reader;
                     
-                    var id = reader.Read(Notifications.NotificationsTable.IdIndex, out var idSize);
-                    var createdAt = reader.Read(Notifications.NotificationsTable.CreatedAtIndex, out var createdAtSize);
-                    var postponedUntil = reader.Read(Notifications.NotificationsTable.PostponedUntilIndex, out var postponedUntilSize);
-                    var jsonPtr = reader.Read(Notifications.NotificationsTable.JsonIndex, out var jsonSize);
+                    var id = reader.Read(LegacyNotificationsTable.IdIndex, out var idSize);
+                    var createdAt = reader.Read(LegacyNotificationsTable.CreatedAtIndex, out var createdAtSize);
+                    var postponedUntil = reader.Read(LegacyNotificationsTable.PostponedUntilIndex, out var postponedUntilSize);
+                    var jsonPtr = reader.Read(LegacyNotificationsTable.JsonIndex, out var jsonSize);
 
                     var jsonBlittable = new BlittableJsonReaderObject(jsonPtr, jsonSize, jsonContext);
 
-                    jsonBlittable.TryGet("Type", out LazyStringValue notificationTypeLsv);
+                    if (jsonBlittable.TryGet(TypePropertyName, out LazyStringValue notificationTypeLsv) == false)
+                        throw new Exception($"Couldn't find {TypePropertyName} property in notification json.");
 
-                    var notificationType = Enum.Parse<NotificationType>(notificationTypeLsv);
+                    if (Enum.TryParse<NotificationType>(notificationTypeLsv, out var notificationType) == false)
+                        throw new Exception($"Unexpected {nameof(NotificationType)}: {notificationTypeLsv}");
 
                     LazyStringValue notificationCategoryLsv;
 
-                    if (notificationType is NotificationType.AlertRaised)
-                        jsonBlittable.TryGet("AlertType", out notificationCategoryLsv);
-                    else if (notificationType is NotificationType.PerformanceHint)
-                        jsonBlittable.TryGet("HintType", out notificationCategoryLsv);
-                    else
-                        throw new Exception("Unknown notification type");
+                    switch (notificationType)
+                    {
+                        case NotificationType.AlertRaised:
+                            jsonBlittable.TryGet("AlertType", out notificationCategoryLsv);
+                            break;
+                        case NotificationType.PerformanceHint:
+                            jsonBlittable.TryGet("HintType", out notificationCategoryLsv);
+                            break;
+                        default:
+                            notificationCategoryLsv = null;
+                            break;
+                    }
 
                     using (writeTable.Allocate(out TableValueBuilder tvb))
                     {
@@ -101,16 +142,19 @@ namespace Raven.Server.Storage.Schema.Updates.Server
                         tvb.Add(postponedUntil, postponedUntilSize);
                         tvb.Add(jsonPtr, jsonSize);
                         tvb.Add(notificationTypeLsv.Buffer, notificationTypeLsv.Size);
-                        tvb.Add(notificationCategoryLsv.Buffer, notificationCategoryLsv.Size);
-                        //writeTable.Update(reader.Id, tvb);
-                        //writeTable.Set(tvb);
-                        writeTable.Delete(readerId);
+                        
+                        if (notificationCategoryLsv != null)
+                            tvb.Add(notificationCategoryLsv.Buffer, notificationCategoryLsv.Size);
+                        
                         writeTable.Insert(tvb);
+                        deleteTable.Delete(readerId);
                     }
                 }
             }
-
-            return false;
+            
+            step.WriteTx.DeleteTable(oldTableName);
+            
+            return true;
         }
     }
 }
