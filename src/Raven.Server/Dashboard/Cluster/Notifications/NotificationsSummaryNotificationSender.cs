@@ -63,7 +63,7 @@ public class NotificationsSummaryNotificationSender : AbstractClusterDashboardNo
                             databaseNotificationsSummary.PerformanceHintItems.Add(notificationSummaryItem);
                             break;
                         default:
-                            throw new Exception("todo");
+                            throw new Exception($"Unsupported {nameof(NotificationType)}: {notificationType}");
                     }
                 }
             }

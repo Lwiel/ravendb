@@ -15,6 +15,7 @@ namespace Raven.Server.Storage.Schema.Updates.Server
         public SchemaUpgrader.StorageType StorageType => SchemaUpgrader.StorageType.Server;
 
         private static readonly TableSchema LegacyNotificationsSchema = new TableSchema();
+        private static readonly TableSchema NewNotificationsSchema = new TableSchema();
 
         private const string OldNotificationsTableName = "Notifications";
         
@@ -28,15 +29,29 @@ namespace Raven.Server.Storage.Schema.Updates.Server
             public const int JsonIndex = 3;
         }
 
+        private static class NewNotificationsTable
+        {
+            public const int IdIndex = 0;
+            public const int CreatedAtIndex = 1;
+            public const int PostponedUntilIndex = 2;
+            public const int JsonIndex = 3;
+            public const int NotificationTypeIndex = 4;
+            public const int CategoryNameIndex = 5;
+        }
+
         static From62000()
         {
             Slice byCreatedAt;
             Slice byPostponedUntil;
+            Slice byNotificationType;
+            Slice byCategoryName;
             
             using (StorageEnvironment.GetStaticContext(out var ctx))
             {
                 Slice.From(ctx, "ByCreatedAt", ByteStringType.Immutable, out byCreatedAt);
                 Slice.From(ctx, "ByPostponedUntil", ByteStringType.Immutable, out byPostponedUntil);
+                Slice.From(ctx, "ByNotificationType", ByteStringType.Immutable, out byNotificationType);
+                Slice.From(ctx, "ByCategoryName", ByteStringType.Immutable, out byCategoryName);
             }
             
             LegacyNotificationsSchema.DefineKey(new TableSchema.IndexDef
@@ -55,6 +70,36 @@ namespace Raven.Server.Storage.Schema.Updates.Server
             {
                 StartIndex = LegacyNotificationsTable.PostponedUntilIndex,
                 Name = byPostponedUntil
+            });
+
+            NewNotificationsSchema.DefineKey(new TableSchema.IndexDef
+            {
+                StartIndex = NewNotificationsTable.IdIndex,
+                Count = 1
+            });
+
+            NewNotificationsSchema.DefineIndex(new TableSchema.IndexDef
+            {
+                StartIndex = NewNotificationsTable.CreatedAtIndex,
+                Name = byCreatedAt
+            });
+
+            NewNotificationsSchema.DefineIndex(new TableSchema.IndexDef
+            {
+                StartIndex = NewNotificationsTable.PostponedUntilIndex,
+                Name = byPostponedUntil
+            });
+            
+            NewNotificationsSchema.DefineIndex(new TableSchema.IndexDef
+            {
+                StartIndex = NewNotificationsTable.NotificationTypeIndex,
+                Name = byNotificationType
+            });
+        
+            NewNotificationsSchema.DefineIndex(new TableSchema.IndexDef
+            {
+                StartIndex = NewNotificationsTable.CategoryNameIndex,
+                Name = byCategoryName
             });
         }
         
@@ -96,7 +141,7 @@ namespace Raven.Server.Storage.Schema.Updates.Server
                 return false;
             
             Notifications.NotificationsSchemaBase.Create(step.WriteTx, newTableName, 16);
-            var writeTable = step.WriteTx.OpenTable(Notifications.NotificationsSchemaBase, newTableName);
+            var writeTable = step.WriteTx.OpenTable(NewNotificationsSchema, newTableName);
             var deleteTable = step.WriteTx.OpenTable(LegacyNotificationsSchema, oldTableName);
             
             foreach (var existingNotification in readTable.SeekByPrimaryKey(Slices.BeforeAllKeys, 0))
