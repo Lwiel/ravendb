@@ -58,6 +58,9 @@
     <None Remove="Data\RavenDB_24797\24797_counters_test.ravendb-snapshot" />
     <None Remove="Smuggler\Data\DocumentWithRevisions.ravendbdump" />
     <None Remove="Smuggler\Data\RevisionsWithoutADocument.ravendbdump" />
+    <None Update="SchemaUpgrade\Issues\SystemVersion\RavenDB-24424_pre_schema_upgrade.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\Tests.Infrastructure\CommonTestsAssemblyInfo.cs" Link="Properties\CommonTestsAssemblyInfo.cs" />
