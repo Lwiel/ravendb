@@ -30,6 +30,7 @@ import {
 } from "components/pages/database/tasks/tasksErrors/utils/tasksErrorsUtils";
 import genUtils from "common/generalUtils";
 import moment from "moment";
+import { accessManagerSelectors } from "components/common/shell/accessManagerSliceSelectors";
 import EtlTaskStats = Raven.Server.Documents.ETL.Stats.EtlTaskStats;
 import EtlErrors = Raven.Server.Documents.ETL.Stats.EtlErrors;
 
@@ -68,6 +69,7 @@ function ConnectionStatusCell({
 }: ConnectionStatusCellProps) {
     const { tasksService } = useServices();
     const databaseName = useAppSelector(databaseSelectors.activeDatabaseName);
+    const hasDatabaseWriteAccess = useAppSelector(accessManagerSelectors.getHasDatabaseWriteAccess)();
 
     const retryBatch = useAsyncCallback(async () => {
         await tasksService.retryBatch(databaseName, taskName, location);
@@ -79,6 +81,8 @@ function ConnectionStatusCell({
     if (status !== "Reconnect") {
         return <span>{status}</span>;
     }
+
+    const isRetryDisabled = isRetryPending || retryBatch.loading || !hasDatabaseWriteAccess;
 
     return (
         <div className="hstack gap-1">
@@ -99,7 +103,7 @@ function ConnectionStatusCell({
                                 icon="refresh"
                                 isSpinning={retryBatch.loading}
                                 onClick={retryBatch.execute}
-                                disabled={isRetryPending || retryBatch.loading}
+                                disabled={isRetryDisabled}
                             >
                                 Retry now
                             </ButtonWithSpinner>
