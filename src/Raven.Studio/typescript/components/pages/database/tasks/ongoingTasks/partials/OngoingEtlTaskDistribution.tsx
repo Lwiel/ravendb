@@ -13,12 +13,7 @@ import PopoverWithHoverWrapper from "components/common/PopoverWithHoverWrapper";
 import { useAppUrls } from "hooks/useAppUrls";
 import { databaseSelectors } from "components/common/shell/databaseSliceSelectors";
 import { useAppSelector } from "components/store";
-import {
-    getPopoverMessageForTaskHealth,
-    getTaskErrorCount,
-    getTaskHealthStatus,
-    healthStatusToBadge,
-} from "../panels/etlPanelUtils";
+import { getPopoverMessageForTaskHealth, getTaskErrorCount } from "../panels/etlPanelUtils";
 import { useServices } from "hooks/useServices";
 import { useAsync, useAsyncCallback } from "react-async-hook";
 import { useViewSheet } from "components/common/splitView/ViewSheet";
@@ -26,7 +21,9 @@ import EtlErrorDetailsSheet from "components/pages/database/tasks/tasksErrors/pa
 import {
     FlatError,
     flattenAllTasksErrors,
+    getTaskHealthStatus,
     getTasksWithErrors,
+    healthStatusToBadge,
 } from "components/pages/database/tasks/tasksErrors/utils/tasksErrorsUtils";
 import genUtils from "common/generalUtils";
 import moment from "moment";
@@ -170,25 +167,23 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
         );
         const allErrors = flattenAllTasksErrors(tasksWithErrors, etlStats ?? []);
 
-        const firstError: FlatError =
-            allErrors[0] ??
-            ({
-                Error: nodeInfo.details?.error,
-                nodeTag: nodeInfo.location.nodeTag,
-                shard: nodeInfo.location.shardNumber,
-                etlName: task.shared.taskName,
-                transformationName: null,
-                healthStatus: null,
-                taskId: null,
-                etlType: null,
-                errorType: "Process",
-                EtlProcessName: null,
-                Step: null,
-                CreatedAt: null,
-                Id: null,
-                AdditionalInfo: null,
-                AffectedDocumentsCount: 0,
-            } as unknown as FlatError);
+        const firstError: FlatError = allErrors[0] ?? {
+            Error: nodeInfo.details?.error,
+            nodeTag: nodeInfo.location.nodeTag,
+            shard: nodeInfo.location.shardNumber,
+            etlName: task.shared.taskName,
+            transformationName: null,
+            healthStatus: null,
+            taskId: null,
+            etlType: null,
+            errorType: "Process",
+            EtlProcessName: null,
+            Step: null,
+            CreatedAt: null,
+            Id: null,
+            AdditionalInfo: null,
+            AffectedDocumentsCount: 0,
+        };
 
         open({
             component: <EtlErrorDetailsSheet error={firstError} allErrors={allErrors} initialIndex={0} />,
@@ -220,8 +215,8 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
 
                     {nodeInfo.location.nodeTag}
                 </div>
-                <div>
-                    {nodeInfo.status === "success" ? (
+                {nodeInfo.status === "success" && (
+                    <div>
                         <ConnectionStatusCell
                             status={nodeInfo.details.taskConnectionStatus}
                             taskName={task.shared.taskName}
@@ -230,10 +225,8 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
                             nextBatchRetryTime={nextBatchRetryTime}
                             onRetrySuccess={asyncLocalEtlStats.execute}
                         />
-                    ) : (
-                        ""
-                    )}
-                </div>
+                    </div>
+                )}
                 <div>
                     {hasError || errorCount > 0 ? (
                         <strong>
