@@ -29,13 +29,11 @@ import genUtils from "common/generalUtils";
 import moment from "moment";
 import { accessManagerSelectors } from "components/common/shell/accessManagerSliceSelectors";
 import EtlTaskStats = Raven.Server.Documents.ETL.Stats.EtlTaskStats;
-import EtlErrors = Raven.Server.Documents.ETL.Stats.EtlErrors;
 
 interface OngoingEtlTaskDistributionProps {
     task: AnyEtlOngoingTaskInfo;
     showPreview: (transformationName: string) => void;
     etlStats?: EtlTaskStats[];
-    etlErrors?: EtlErrors[];
 }
 
 interface ItemWithTooltipProps {
@@ -44,7 +42,6 @@ interface ItemWithTooltipProps {
     task: AnyEtlOngoingTaskInfo;
     showPreview: (transformationName: string) => void;
     etlStats?: EtlTaskStats[];
-    etlErrors?: EtlErrors[];
 }
 
 interface ConnectionStatusCellProps {
@@ -119,7 +116,7 @@ function ConnectionStatusCell({
 }
 
 function ItemWithTooltip(props: ItemWithTooltipProps) {
-    const { nodeInfo, sharded, task, showPreview, etlStats, etlErrors } = props;
+    const { nodeInfo, sharded, task, showPreview, etlStats } = props;
 
     const shard = (
         <div className="top shard">
@@ -195,7 +192,7 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
 
     const taskHealth = getTaskHealthStatus(etlStats ?? [], task.shared.taskName);
     const { bg, icon: heathIcon, label: healthLabel } = healthStatusToBadge(taskHealth);
-    const errorCount = getTaskErrorCount(etlErrors ?? [], task.shared.taskName);
+    const errorCount = getTaskErrorCount(asyncEtlErrors.result ?? [], task.shared.taskName);
     const goToTaskErrors = appUrl.forTasksErrors(databaseName, task.shared.taskName);
 
     const nextBatchRetryTime =
@@ -270,7 +267,7 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
 }
 
 export function OngoingEtlTaskDistribution(props: OngoingEtlTaskDistributionProps) {
-    const { task, showPreview, etlStats, etlErrors } = props;
+    const { task, showPreview, etlStats } = props;
     const sharded = task.nodesInfo.some((x) => x.location.shardNumber != null);
 
     const visibleNodes = task.nodesInfo.filter(
@@ -289,7 +286,6 @@ export function OngoingEtlTaskDistribution(props: OngoingEtlTaskDistributionProp
                 showPreview={showPreview}
                 task={task}
                 etlStats={etlStats}
-                etlErrors={etlErrors}
             />
         );
     });
