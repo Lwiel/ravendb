@@ -144,7 +144,8 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
 
     const { appUrl } = useAppUrls();
     const { tasksService } = useServices();
-    const databaseName = useAppSelector(databaseSelectors.activeDatabaseName);
+    const db = useAppSelector(databaseSelectors.activeDatabase);
+    const databaseName = db?.name;
 
     const processNames = (nodeInfo.etlProgress ?? []).map(
         (progress) => `${task.shared.taskName}/${progress.transformationName}`
@@ -155,10 +156,7 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
         []
     );
 
-    const asyncEtlErrors = useAsync(
-        async () => tasksService.getEtlErrors(databaseName, nodeInfo.location, processNames),
-        [databaseName, nodeInfo.location.nodeTag, nodeInfo.location.shardNumber, processNames.join(",")]
-    );
+    const asyncEtlErrors = useAsync(() => tasksService.getEtlErrors(databaseName, nodeInfo.location, processNames), []);
 
     const openErrorSheet = () => {
         const etlErrorsList = asyncEtlErrors.result ?? [];
