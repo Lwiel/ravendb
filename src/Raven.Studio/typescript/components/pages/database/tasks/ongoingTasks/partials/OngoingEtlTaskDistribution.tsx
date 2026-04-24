@@ -49,6 +49,7 @@ interface ConnectionStatusCellProps {
     processNames: string[];
     location: databaseLocationSpecifier;
     toggleErrorModal: () => void;
+    hasErrors: boolean;
     nextBatchRetryTime?: string;
     onRetrySuccess?: () => Promise<unknown>;
 }
@@ -58,6 +59,7 @@ function ConnectionStatusCell({
     processNames,
     location,
     toggleErrorModal,
+    hasErrors,
     nextBatchRetryTime,
     onRetrySuccess,
 }: ConnectionStatusCellProps) {
@@ -108,7 +110,13 @@ function ConnectionStatusCell({
                             >
                                 Retry now
                             </ButtonWithSpinner>
-                            <Button variant="secondary" size="sm" className="rounded-pill" onClick={toggleErrorModal}>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                className="rounded-pill"
+                                onClick={toggleErrorModal}
+                                disabled={!hasErrors}
+                            >
                                 <Icon icon="preview" />
                                 View error
                             </Button>
@@ -229,6 +237,7 @@ function ItemWithTooltip(props: ItemWithTooltipProps) {
                             processNames={processNames}
                             location={nodeInfo.location}
                             toggleErrorModal={openErrorSheet}
+                            hasErrors={hasError || errorCount > 0}
                             nextBatchRetryTime={nextBatchRetryTime}
                             onRetrySuccess={asyncLocalEtlStats.execute}
                         />
