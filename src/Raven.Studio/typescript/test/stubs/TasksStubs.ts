@@ -1461,6 +1461,7 @@ namespace Orders
         return [
             {
                 TaskName: "AzureETL/T1",
+                Category: "Etl",
                 EtlType: "Queue",
                 EtlSubType: "AzureQueueStorage",
                 ProcessErrors: [
@@ -1476,6 +1477,7 @@ namespace Orders
             },
             {
                 TaskName: "ElasticETL/T1",
+                Category: "Etl",
                 EtlType: "ElasticSearch",
                 EtlSubType: null,
                 ProcessErrors: [
@@ -1491,6 +1493,7 @@ namespace Orders
             },
             {
                 TaskName: "EmbeddingsETL/embeddings-transform-script",
+                Category: "Ai",
                 EtlType: "EmbeddingsGeneration",
                 EtlSubType: null,
                 ProcessErrors: [
@@ -1506,6 +1509,7 @@ namespace Orders
             },
             {
                 TaskName: "GenAiETL/GenAi-transform-script",
+                Category: "Ai",
                 EtlType: "GenAi",
                 EtlSubType: null,
                 ProcessErrors: [
@@ -1521,6 +1525,7 @@ namespace Orders
             },
             {
                 TaskName: "KafkaETL/T1",
+                Category: "Etl",
                 EtlType: "Queue",
                 EtlSubType: "Kafka",
                 ProcessErrors: [
@@ -1536,6 +1541,7 @@ namespace Orders
             },
             {
                 TaskName: "OlapETL/T1",
+                Category: "Etl",
                 EtlType: "Olap",
                 EtlSubType: null,
                 ProcessErrors: [
@@ -1551,6 +1557,7 @@ namespace Orders
             },
             {
                 TaskName: "RabbitETL/T1",
+                Category: "Etl",
                 EtlType: "Queue",
                 EtlSubType: "RabbitMq",
                 ProcessErrors: [
@@ -1566,6 +1573,7 @@ namespace Orders
             },
             {
                 TaskName: "RavenETL/T1",
+                Category: "Etl",
                 EtlType: "Raven",
                 EtlSubType: null,
                 ProcessErrors: [
@@ -1581,6 +1589,7 @@ namespace Orders
             },
             {
                 TaskName: "SnowflakeETL/T1",
+                Category: "Etl",
                 EtlType: "Snowflake",
                 EtlSubType: null,
                 ProcessErrors: [
@@ -1596,6 +1605,7 @@ namespace Orders
             },
             {
                 TaskName: "SqlETL/T1",
+                Category: "Etl",
                 EtlType: "Sql",
                 EtlSubType: null,
                 ProcessErrors: [
@@ -1611,6 +1621,7 @@ namespace Orders
             },
             {
                 TaskName: "SqsETL/T1",
+                Category: "Etl",
                 EtlType: "Queue",
                 EtlSubType: "AmazonSqs",
                 ProcessErrors: [
@@ -1626,6 +1637,7 @@ namespace Orders
             },
             {
                 TaskName: "EmbeddingsETL/embeddings-transform-script",
+                Category: "Ai",
                 EtlType: "EmbeddingsGeneration",
                 EtlSubType: null,
                 ProcessErrors: [],
@@ -1633,6 +1645,7 @@ namespace Orders
             },
             {
                 TaskName: "GenAiETL/GenAi-transform-script",
+                Category: "Ai",
                 EtlType: "GenAi",
                 EtlSubType: null,
                 ProcessErrors: [],
