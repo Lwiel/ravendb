@@ -221,6 +221,7 @@ namespace Raven.Server.ServerWide
             [nameof(UpdateCdcSinkCommand)] = 72_001,
             [nameof(RemoveCdcSinkProcessStateCommand)] = 72_001,
             [nameof(UpdateCdcSinkProcessStateCommand)] = 72_001,
+            [nameof(UpdateSnmpDatabaseCdcSinksMappingCommand)] = 72_001,
 
 
             [nameof(PutServerWideConnectionStringCommand)] = 72_001,
