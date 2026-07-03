@@ -39,8 +39,8 @@ namespace Raven.Server.Config.Categories
         [ConfigurationEntry("CdcSink.SqlServer.PollIntervalInSec", ConfigurationEntryScope.ServerWideOrPerDatabase)]
         public TimeSetting PollInterval { get; protected set; }
 
-        [Description("Timeout (in seconds) for the PostgreSQL replication connection. Controls both the server-side wal_sender_timeout (keepalives arrive at roughly half this interval) and the client-side WalReceiverTimeout. Lower values detect dead connections faster but increase keepalive traffic. SQL Server and MySQL ignore this setting.")]
-        [DefaultValue(10)]
+        [Description("Timeout (in seconds) for the PostgreSQL replication connection. Controls both the server-side wal_sender_timeout (keepalives arrive at roughly half this interval) and the client-side WalReceiverTimeout. Lower values detect dead connections faster but increase keepalive traffic. Must stay high enough for the source to spool a large transaction (pgoutput emits the whole transaction at its COMMIT, sending nothing until then) and to replay a backlogged slot on resume; too low a value times the read out mid-spool and stalls the sink. Defaults to PostgreSQL's own wal_sender_timeout/wal_receiver_timeout default of 60 seconds. SQL Server and MySQL ignore this setting.")]
+        [DefaultValue(60)]
         [TimeUnit(TimeUnit.Seconds)]
         [ConfigurationEntry("CdcSink.Postgres.ReplicationTimeoutInSec", ConfigurationEntryScope.ServerWideOrPerDatabase)]
         public TimeSetting PostgresReplicationTimeout { get; protected set; }
