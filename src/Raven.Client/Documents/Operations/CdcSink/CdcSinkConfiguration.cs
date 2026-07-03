@@ -467,16 +467,70 @@ public class CdcSinkConfiguration : IDynamicJson, IDatabaseTask
                 Schema = string.IsNullOrEmpty(table.SourceTableSchema) ? defaultSchema : table.SourceTableSchema,
                 TableName = table.SourceTableName,
                 PrimaryKeyColumns = table.PrimaryKeyColumns,
+                // A root table's PrimaryKeyColumns is its real primary key — already unique across the table.
+                InitialLoadKeyColumns = table.PrimaryKeyColumns,
             });
-            ForEachEmbeddedTable(table.EmbeddedTables, e =>
-                tables.Add(new TableInfo
-                {
-                    Schema = string.IsNullOrEmpty(e.SourceTableSchema) ? defaultSchema : e.SourceTableSchema,
-                    TableName = e.SourceTableName,
-                    PrimaryKeyColumns = e.PrimaryKeyColumns,
-                }));
+
+            // The root join columns (FK to the root table) are the top-level embedded table's JoinColumns
+            // and stay constant for the whole subtree — mirrors CdcSinkTableProcessor.RootJoinColumns.
+            if (table.EmbeddedTables != null)
+            {
+                foreach (var embedded in table.EmbeddedTables)
+                    CollectEmbeddedTablesFlat(embedded, embedded.JoinColumns, defaultSchema, tables);
+            }
         }
         return tables;
+    }
+
+    private static void CollectEmbeddedTablesFlat(CdcSinkEmbeddedTableConfig embedded, List<string> rootJoinColumns, string defaultSchema, List<TableInfo> tables)
+    {
+        RuntimeHelpers.EnsureSufficientExecutionStack();
+
+        tables.Add(new TableInfo
+        {
+            Schema = string.IsNullOrEmpty(embedded.SourceTableSchema) ? defaultSchema : embedded.SourceTableSchema,
+            TableName = embedded.SourceTableName,
+            PrimaryKeyColumns = embedded.PrimaryKeyColumns,
+            InitialLoadKeyColumns = BuildEmbeddedInitialLoadKeyColumns(rootJoinColumns, embedded.JoinColumns, embedded.PrimaryKeyColumns),
+        });
+
+        if (embedded.EmbeddedTables != null)
+        {
+            foreach (var child in embedded.EmbeddedTables)
+                CollectEmbeddedTablesFlat(child, rootJoinColumns, defaultSchema, tables);
+        }
+    }
+
+    /// <summary>
+    /// The column set used to paginate an embedded table's initial-load keyset scan. Unlike
+    /// <see cref="CdcSinkEmbeddedTableConfig.PrimaryKeyColumns"/> — which only has to be unique within a
+    /// single parent's array/map — this key must uniquely identify a source row across the whole table,
+    /// otherwise keyset pagination (<c>WHERE key &gt; lastKey</c>) silently skips rows. We glue together
+    /// the root FK, the immediate-parent FK, and the within-parent PK (distinct, order-preserving):
+    /// for single- and two-level embedding this is provably unique; deeper nesting relies on the
+    /// intermediate keys being globally unique (initial load warns when it cannot guarantee this).
+    /// </summary>
+    public static List<string> BuildEmbeddedInitialLoadKeyColumns(List<string> rootJoinColumns, List<string> joinColumns, List<string> primaryKeyColumns)
+    {
+        var result = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddDistinct(rootJoinColumns);
+        AddDistinct(joinColumns);
+        AddDistinct(primaryKeyColumns);
+
+        return result;
+
+        void AddDistinct(List<string> columns)
+        {
+            if (columns == null)
+                return;
+            foreach (var column in columns)
+            {
+                if (string.IsNullOrEmpty(column) == false && seen.Add(column))
+                    result.Add(column);
+            }
+        }
     }
 
     /// <summary>
@@ -503,6 +557,14 @@ public class CdcSinkConfiguration : IDynamicJson, IDatabaseTask
         public string Schema { get; set; }
         public string TableName { get; set; }
         public List<string> PrimaryKeyColumns { get; set; }
+
+        /// <summary>
+        /// Columns that drive initial-load keyset pagination for this table. Must uniquely identify a
+        /// source row. For root tables this equals <see cref="PrimaryKeyColumns"/>; for embedded tables it
+        /// is the glued root-FK + parent-FK + PK key (see <see cref="BuildEmbeddedInitialLoadKeyColumns"/>).
+        /// </summary>
+        public List<string> InitialLoadKeyColumns { get; set; }
+
         public string FullName => $"{Schema}.{TableName}";
 
         public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(FullName);
