@@ -1436,6 +1436,21 @@ ORDER BY ord";
             Assert.Equal("b", DecodeCell(table, row: 0, column: 0));
         }
 
+        // POSIX regex operators (~, !~, ~*, !~*). JDBC/ODBC drivers filter catalog names with these
+        // (e.g. `nspname !~ '^pg_'`); before the fix the operator fell through and the probe failed.
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("select case when 'pg_catalog' ~ '^pg_' then 'Y' else 'N' end as r", "Y")]
+        [InlineData("select case when 'public' ~ '^pg_' then 'Y' else 'N' end as r", "N")]
+        [InlineData("select case when 'information_schema' !~ '^pg_' then 'Y' else 'N' end as r", "Y")]
+        [InlineData("select case when 'pg_class' !~ '^pg_' then 'Y' else 'N' end as r", "N")]
+        [InlineData("select case when 'PG_CATALOG' ~* '^pg_' then 'Y' else 'N' end as r", "Y")]
+        [InlineData("select case when 'PG_CATALOG' ~ '^pg_' then 'Y' else 'N' end as r", "N")]
+        public void Posix_regex_operators_evaluate(string sql, string expected)
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(sql, EmptyCtx(), out var table));
+            Assert.Equal(expected, DecodeCell(table, row: 0, column: 0));
+        }
+
         private static VirtualQueryContext EmptyCtx() => new();
 
         private static string DecodeCell(Raven.Server.Integrations.PostgreSQL.Messages.PgTable table, int row, int column)
