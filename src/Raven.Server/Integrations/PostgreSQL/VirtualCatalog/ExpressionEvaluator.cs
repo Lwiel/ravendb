@@ -243,6 +243,16 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             if (caseExpr.Args is not { Count: > 0 } whens)
                 return false;
 
+            // Simple CASE (`CASE arg WHEN v1 THEN r1 ... END`): libpg_query leaves the raw parse form
+            // where each WHEN carries the compared VALUE (an expression), not a boolean condition - the
+            // arg = value rewrite is a parse-analysis step libpg_query doesn't run. So evaluate the arg
+            // once and match each WHEN by equality. Searched CASE (`CASE WHEN cond THEN ...`) has a null
+            // arg and each WHEN.Expr is a boolean predicate.
+            var hasArg = caseExpr.Arg != null;
+            object argValue = null;
+            if (hasArg && TryEvaluate(caseExpr.Arg, scope, subqueryResolver, functionResolver, out argValue) == false)
+                return false;
+
             foreach (var whenNode in whens)
             {
                 var when = whenNode?.CaseWhen;
@@ -252,7 +262,11 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
                 if (TryEvaluate(when.Expr, scope, subqueryResolver, functionResolver, out var cond) == false)
                     return false;
 
-                if (IsTruthy(cond))
+                // Simple form: arg = whenValue (a NULL operand yields NULL -> no match, per SQL 3VL).
+                // Searched form: the WHEN expression is itself the boolean to test.
+                var matched = hasArg ? CompareValues(argValue, cond) == 0 : IsTruthy(cond);
+
+                if (matched)
                 {
                     return TryEvaluate(when.Result, scope, subqueryResolver, functionResolver, out value);
                 }

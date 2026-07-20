@@ -1394,6 +1394,48 @@ ORDER BY ord";
             Assert.NotEqual(Regex.InfiniteMatchTimeout, regex.MatchTimeout);
         }
 
+        // Simple CASE (`CASE arg WHEN value THEN ...`) must match by comparing the arg to each WHEN value,
+        // not by treating the WHEN value as a boolean. This is the shape pgJDBC's getTables() uses to
+        // compute TABLE_TYPE (`CASE c.relkind WHEN 'r' THEN 'TABLE' WHEN 'v' THEN 'VIEW' ...`). Before the
+        // fix the arg was ignored and the first WHEN always "matched" (a non-null AConst is truthy), so
+        // every relkind mapped to 'TABLE'.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Simple_case_matches_a_non_first_branch_by_value()
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select case 'v' when 'r' then 'TABLE' when 'v' then 'VIEW' else 'OTHER' end as table_type",
+                EmptyCtx(), out var table));
+            Assert.Equal("VIEW", DecodeCell(table, row: 0, column: 0));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Simple_case_with_no_matching_value_uses_else()
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select case 'x' when 'r' then 'TABLE' when 'v' then 'VIEW' else 'OTHER' end as table_type",
+                EmptyCtx(), out var table));
+            Assert.Equal("OTHER", DecodeCell(table, row: 0, column: 0));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Simple_case_first_branch_still_matches()
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select case 'r' when 'r' then 'TABLE' when 'v' then 'VIEW' else 'OTHER' end as table_type",
+                EmptyCtx(), out var table));
+            Assert.Equal("TABLE", DecodeCell(table, row: 0, column: 0));
+        }
+
+        // Searched CASE (`CASE WHEN cond THEN ...`, no arg) must keep evaluating each WHEN as a boolean.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Searched_case_still_evaluates_boolean_conditions()
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select case when 1 = 2 then 'a' when 2 = 2 then 'b' else 'c' end as r",
+                EmptyCtx(), out var table));
+            Assert.Equal("b", DecodeCell(table, row: 0, column: 0));
+        }
+
         private static VirtualQueryContext EmptyCtx() => new();
 
         private static string DecodeCell(Raven.Server.Integrations.PostgreSQL.Messages.PgTable table, int row, int column)
