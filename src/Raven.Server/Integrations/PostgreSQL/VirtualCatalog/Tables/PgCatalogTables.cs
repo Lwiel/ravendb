@@ -157,6 +157,7 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
             new("attidentity",  PgChar.Default, PgFormat.Text),
             new("attgenerated", PgChar.Default, PgFormat.Text),
             new("attisdropped", PgBool.Default, PgFormat.Text),
+            new("attlen",       PgInt2.Default, PgFormat.Text),
         };
 
         public override IEnumerable<object[]> EnumerateRows(VirtualQueryContext ctx)
@@ -188,7 +189,7 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
                             attnum++, column.PgType.TypeModifier,
                             false, false,
                             NotAnIdentityColumn, NotAGeneratedColumn,
-                            false
+                            false, column.PgType.Size
                         };
                     }
                 }
