@@ -418,6 +418,25 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
                 return true;
             }
 
+            // POSIX regex match: ~ (matches), !~ (doesn't match), ~* / !~* (case-insensitive variants).
+            // JDBC/ODBC catalog probes use these against pg_namespace/pg_class names
+            // (e.g. `nspname !~ '^pg_' AND nspname <> 'information_schema'`). PG uses POSIX ARE; for the
+            // simple anchored/alternation patterns drivers emit, .NET regex is compatible. Partial match
+            // (unanchored) mirrors PG's `~` semantics; three-valued logic on NULL.
+            if (op is "~" or "!~" or "~*" or "!~*")
+            {
+                if (lhs is null || rhs is null)
+                {
+                    value = null;
+                    return true;
+                }
+                var ignoreCase = op is "~*" or "!~*";
+                if (TryMatchPosixRegex(lhs.ToString(), rhs.ToString(), ignoreCase, out var matched) == false)
+                    return false; // pattern .NET can't compile - fall through to the next dispatch tier
+                value = op is "!~" or "!~*" ? !matched : matched;
+                return true;
+            }
+
             // String concatenation. PG: NULL || anything -> NULL (strict).
             if (op == "||")
             {
@@ -477,6 +496,43 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             catch (RegexMatchTimeoutException)
             {
                 throw new PgErrorException(PgErrorCodes.StatementTooComplex, $"LIKE pattern took too long to evaluate: {pattern}");
+            }
+        }
+
+        // POSIX regex (~ / !~) patterns are used verbatim as .NET regexes, cached like LIKE and bounded by
+        // the same match timeout. An invalid pattern (one .NET can't compile) fails the evaluation rather
+        // than crashing the interpreter - the caller then falls through to the next dispatch tier.
+        private static readonly ConcurrentDictionary<(string Pattern, bool IgnoreCase), Regex> PosixRegexCache = new();
+
+        private static bool TryMatchPosixRegex(string input, string pattern, bool ignoreCase, out bool matched)
+        {
+            matched = false;
+            var key = (pattern, ignoreCase);
+            if (PosixRegexCache.TryGetValue(key, out var regex) == false)
+            {
+                var options = RegexOptions.CultureInvariant;
+                if (ignoreCase)
+                    options |= RegexOptions.IgnoreCase;
+                try
+                {
+                    regex = new Regex(pattern, options, LikeMatchTimeout);
+                }
+                catch (System.ArgumentException)
+                {
+                    return false; // pattern isn't valid .NET regex syntax
+                }
+                if (PosixRegexCache.Count < LikeRegexCacheCap)
+                    PosixRegexCache.TryAdd(key, regex);
+            }
+
+            try
+            {
+                matched = regex.IsMatch(input);
+                return true;
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                throw new PgErrorException(PgErrorCodes.StatementTooComplex, $"regex pattern took too long to evaluate: {pattern}");
             }
         }
 
