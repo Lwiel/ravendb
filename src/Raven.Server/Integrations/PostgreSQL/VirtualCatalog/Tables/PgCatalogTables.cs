@@ -91,18 +91,5 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
         };
     }
 
-    internal sealed class PgCatalogPgClassTable : CsvBackedCatalogTable
-    {
-        public override string SchemaName => "pg_catalog";
-        public override string TableName => "pg_class";
-        protected override string CsvFileName => "pg_class.csv";
-
-        public override IReadOnlyList<PgVirtualColumn> Columns { get; } = new PgVirtualColumn[]
-        {
-            new("oid",      PgOid.Default,  PgFormat.Text),
-            new("relname",  PgName.Default, PgFormat.Text),
-            new("relkind",  PgChar.Default, PgFormat.Text),
-            new("typrelid", PgOid.Default,  PgFormat.Text),
-        };
-    }
+    // pg_class is generated dynamically from the live collection list - see PgCatalogPgClassTable.cs.
 }
