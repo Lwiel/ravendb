@@ -13,7 +13,6 @@ namespace Raven.Server.Integrations.PostgreSQL.Messages
 {
     public sealed class MessageReader : IDisposable
     {
-        private readonly List<byte[]> _rentedBuffers = new List<byte[]>();
         public async Task<IInitialMessage> ReadInitialMessage(PipeReader reader, CancellationToken token)
         {
             var msgLen = await ReadInt32Async(reader, token) - sizeof(int);
@@ -185,16 +184,10 @@ namespace Raven.Server.Integrations.PostgreSQL.Messages
         {
             var sequence = readBuffer.Slice(0, length);
 
-            byte[] buffer;
-            if (length < 1 * 1024 * 1024)
-            {
-                buffer = ArrayPool<byte>.Shared.Rent(length);
-                _rentedBuffers.Add(buffer);
-            }
-            else
-            {
-                buffer = new byte[length];
-            }
+            // The returned array MUST be exactly 'length' bytes: callers (Bind parameter decoding ->
+            // PgType.FromBytes) trust buffer.Length as the value length. An oversized ArrayPool buffer
+            // would leave a garbage tail that corrupts every text parameter and mis-reverses floats.
+            var buffer = new byte[length];
 
             sequence.CopyTo(buffer);
             reader.AdvanceTo(sequence.End);
@@ -227,10 +220,6 @@ namespace Raven.Server.Integrations.PostgreSQL.Messages
 
         public void Dispose()
         {
-            foreach (var buffer in _rentedBuffers)
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
         }
     }
 }

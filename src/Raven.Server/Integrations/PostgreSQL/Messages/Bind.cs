@@ -43,6 +43,14 @@ namespace Raven.Server.Integrations.PostgreSQL.Messages
                 var parameterLength = await messageReader.ReadInt32Async(reader, token);
                 len += sizeof(int);
 
+                // A length of -1 signals a SQL NULL argument with no value bytes following. Record it
+                // as a null entry (decoded to a NULL query parameter) instead of trying to read -1 bytes.
+                if (parameterLength < 0)
+                {
+                    parameters.Add(null);
+                    continue;
+                }
+
                 parameters.Add(await messageReader.ReadBytesAsync(reader, parameterLength, token));
                 len += parameterLength;
             }
