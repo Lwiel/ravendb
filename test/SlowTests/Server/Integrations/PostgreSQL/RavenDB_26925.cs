@@ -64,6 +64,34 @@ public class RavenDB_26925 : RavenTestBase
         Assert.Contains("Orders", names);
     }
 
+    [RavenFact(RavenTestCategory.PostgreSql)]
+    public async Task Pg_attribute_lists_collection_columns_joined_to_pg_class()
+    {
+        using var store = GetDocumentStore();
+        await Seed(store);
+        var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+        var ctx = new VirtualQueryContext { Database = database };
+
+        // The catalog half of getColumns(): pg_attribute joined to pg_class on attrelid = oid. (The full
+        // pgJDBC getColumns adds a window function + nullif + pg_get_expr, tracked separately.)
+        const string sql = """
+            select a.attname, a.atttypid, a.attnum
+            from pg_catalog.pg_class c
+            join pg_catalog.pg_attribute a on a.attrelid = c.oid
+            where c.relname = 'Orders' and a.attnum > 0 and not a.attisdropped
+            order by a.attnum
+            """;
+
+        Assert.True(PgVirtualInterpreter.TryExecute(sql, ctx, out var table));
+
+        var rows = Rows(table);
+        var names = rows.Select(r => r["attname"]).ToList();
+        // id (synthetic) first, the user field, then json (synthetic) last - RqlQuery's column order.
+        Assert.Equal(new[] { "id", "Company", "json" }, names);
+        // id is exposed as text (oid 25), matching RqlQuery's RowDescription.
+        Assert.Equal("25", rows[0]["atttypid"]);
+    }
+
     private static async Task Seed(Raven.Client.Documents.IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();
