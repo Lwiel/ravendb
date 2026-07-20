@@ -134,7 +134,9 @@ namespace Raven.Server.Integrations.PostgreSQL
                 var dataFormat = defaultParamDataFormat ?? (parameterFormatCodes[i] == 1 ? PgFormat.Binary : PgFormat.Text);
 
                 var pgType = PgType.Parse(dataType);
-                var processedParameter = pgType.FromBytes(parameters.ElementAt(i), dataFormat);
+                // A null entry is a SQL NULL argument (Bind sent length -1, no value bytes).
+                var rawParameter = parameters.ElementAt(i);
+                var processedParameter = rawParameter == null ? null : pgType.FromBytes(rawParameter, dataFormat);
                 Parameters.Add((i + 1).ToString(), processedParameter);
             }
         }
