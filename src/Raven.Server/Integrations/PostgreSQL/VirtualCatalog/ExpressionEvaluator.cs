@@ -84,14 +84,15 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             if (node.SqlvalueFunction != null && functionResolver != null)
                 return TryEvaluateSqlValueFunction(node.SqlvalueFunction, functionResolver, out value);
 
-            // ParamRef ($N): the parameter isn't bound at interpret time - the interpreter runs at
-            // Parse-time (Extended Query Protocol), before the Bind step. We resolve to NULL, which
-            // propagates through PG's three-valued logic: `oid = ANY($1)` becomes NULL -> row excluded.
-            // The net effect is an empty rowset with the right column shape, which is the correct
-            // degraded behavior for pgAdmin's type-introspection probe (it falls back to showing
-            // raw oids when the typname lookup returns nothing).
+            // ParamRef ($N): resolved from the bound parameters, routed through the function resolver
+            // under the reserved name "$<N>" (VirtualInterpreterQuery re-runs the interpreter after Bind
+            // with ctx.Parameters populated). When unbound - Parse-time, before Bind, or no resolver - it
+            // degrades to NULL, which propagates through PG's three-valued logic (`col LIKE $1` -> NULL ->
+            // row excluded), yielding an empty rowset with the right column shape.
             if (node.ParamRef != null)
             {
+                if (functionResolver != null && functionResolver("$" + node.ParamRef.Number, System.Array.Empty<object>(), out value))
+                    return true;
                 value = null;
                 return true;
             }

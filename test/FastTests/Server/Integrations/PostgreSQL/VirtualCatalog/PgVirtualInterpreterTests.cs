@@ -1568,6 +1568,38 @@ ORDER BY ord";
             Assert.Equal(expected, DecodeCell(table, row: 0, column: 0));
         }
 
+        // A $N parameter in a WHERE filter must resolve to its bound value when supplied. pgJDBC's
+        // getTables uses `nspname LIKE $1`; before Bind-time re-interpretation, $1 was NULL and the
+        // filter excluded every row (getTables came back empty).
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Bound_parameter_in_where_like_filters_rows()
+        {
+            var ctx = new VirtualQueryContext { Parameters = BuildParams("public") };
+
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select nspname from pg_catalog.pg_namespace where nspname like $1 order by nspname", ctx, out var table));
+            Assert.Single(table.Data);
+            Assert.Equal("public", DecodeCell(table, row: 0, column: 0));
+        }
+
+        // Without bound parameters (Parse-time, before Bind), a $N degrades to NULL, so `nspname LIKE $1`
+        // is NULL for every row and the result is empty - the correct degraded shape.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Unbound_parameter_in_where_yields_empty()
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select nspname from pg_catalog.pg_namespace where nspname like $1", EmptyCtx(), out var table));
+            Assert.Empty(table.Data);
+        }
+
+        private static IReadOnlyDictionary<string, object> BuildParams(params string[] values)
+        {
+            var d = new Dictionary<string, object>();
+            for (var i = 0; i < values.Length; i++)
+                d[(i + 1).ToString()] = values[i];
+            return d;
+        }
+
         // SQLAlchemy's psycopg2 dialect runs this hstore probe on EVERY connect (Apache Superset,
         // among others). Real PG returns 0 rows (no hstore type) and the client disables native
         // hstore and proceeds. RavenDB must do the same. The JOIN over pg_type/pg_namespace is
