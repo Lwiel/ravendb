@@ -13,6 +13,12 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
         // contexts where no real connection is involved.
         public string Username { get; init; }
 
+        // Bound Extended-protocol parameter values, keyed by 1-based position as a string ("1", "2", ...)
+        // to match PgQuery.Parameters. Null at Parse time (before Bind) - a $N reference then resolves to
+        // NULL. VirtualInterpreterQuery re-runs the interpreter with this populated after Bind so
+        // parameterized catalog probes (e.g. pgJDBC getTables' `nspname LIKE $1`) filter on real values.
+        public IReadOnlyDictionary<string, object> Parameters { get; init; }
+
         // Equality predicates pre-extracted from the current SELECT's WHERE clause, keyed by
         // column name (case-insensitive). Set by the interpreter before each TryExecuteAsRows run
         // so virtual tables can scope their enumeration without re-walking the SQL AST. Example:

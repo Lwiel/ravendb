@@ -425,6 +425,13 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             return (string name, IReadOnlyList<object> args, out object value) =>
             {
                 value = null;
+
+                // A $N parameter reference is routed here by ExpressionEvaluator as the name "$<N>".
+                // Resolve it from the bound parameters (post-Bind); if absent (Parse-time), report
+                // not-found so the reference degrades to NULL.
+                if (name.Length > 1 && name[0] == '$')
+                    return ctx.Parameters != null && ctx.Parameters.TryGetValue(name.Substring(1), out value);
+
                 if (PgVirtualDatabase.TryGetFunction(name, out var function) == false)
                     return false;
                 return function.TryEvaluate(args, ctx, out value);
