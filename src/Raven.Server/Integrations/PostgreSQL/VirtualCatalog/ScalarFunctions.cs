@@ -114,6 +114,36 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
         }
     }
 
+    // information_schema._pg_expandarray(anyarray): PG expands an array into (element x, ordinality n)
+    // rows. pgJDBC's getPrimaryKeys uses it on pg_index.indkey to number the key columns. RavenDB PKs are
+    // always single-column (`id`), so indkey has one element and this yields a single composite (x, n=1) -
+    // returned as a dictionary that ExpressionEvaluator's field-access ((expr).x / (expr).n) reads.
+    internal sealed class PgExpandArrayFunction : ScalarFunction
+    {
+        public override string Name => "_pg_expandarray";
+        public override string ResultColumnName => "_pg_expandarray";
+        public override PgType PgType => PgText.Default; // composite, consumed internally, never serialized
+
+        public override bool TryEvaluate(IReadOnlyList<object> args, VirtualQueryContext ctx, out object result)
+        {
+            result = null;
+            if (args is not { Count: 1 })
+                return false;
+
+            var text = args[0]?.ToString();
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            // indkey is a space-separated int2vector (e.g. "1"); take the first (only) element.
+            var firstToken = text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+            if (long.TryParse(firstToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out var element) == false)
+                return false;
+
+            result = new Dictionary<string, object> { ["x"] = element, ["n"] = 1L };
+            return true;
+        }
+    }
+
     // Concatenates array elements with a delimiter (PG: `array_to_string(arr, delimiter)`).
     // Returns NULL when the array is NULL, matches PG semantics.
     internal sealed class ArrayToStringFunction : ScalarFunction

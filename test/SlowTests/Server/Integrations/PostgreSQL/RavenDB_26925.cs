@@ -127,10 +127,11 @@ public class RavenDB_26925 : RavenTestBase
         Assert.Equal(new[] { "1", "2", "3", "4", "5", "6" }, rows.Select(r => r["attnum"]).ToList());
     }
 
-    // pgJDBC's getPrimaryKeys query INNER JOINs pg_index. RavenDB has no PKs, so the always-empty pg_index
-    // short-circuits the join and the query returns empty instead of hitting the JOIN-not-supported error.
+    // pgJDBC's getPrimaryKeys query. Every RavenDB collection is keyed by its document `id`, so this
+    // reports `id` as the single-column primary key (via the synthetic pg_index + _pg_expandarray +
+    // composite field access). That's what lets Tableau offer relationships between collections.
     [RavenFact(RavenTestCategory.PostgreSql)]
-    public async Task GetPrimaryKeys_pgjdbc_query_returns_empty()
+    public async Task GetPrimaryKeys_pgjdbc_query_reports_id_as_primary_key()
     {
         using var store = GetDocumentStore();
         await Seed(store);
@@ -146,7 +147,13 @@ public class RavenDB_26925 : RavenTestBase
             """;
 
         Assert.True(PgVirtualInterpreter.TryExecute(sql, ctx, out var table));
-        Assert.Empty(table.Data);
+
+        var rows = Rows(table);
+        Assert.Single(rows);
+        Assert.Equal("id", rows[0]["COLUMN_NAME"]);
+        Assert.Equal("Orders", rows[0]["TABLE_NAME"]);
+        Assert.Equal("Orders_pkey", rows[0]["PK_NAME"]);
+        Assert.Equal("1", rows[0]["KEY_SEQ"]);
     }
 
     private static async Task Seed(Raven.Client.Documents.IDocumentStore store)

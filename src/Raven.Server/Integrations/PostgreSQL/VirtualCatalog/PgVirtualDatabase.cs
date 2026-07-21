@@ -32,7 +32,7 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             RegisterTable(new PgCatalogPgClassTable());
             RegisterTable(new PgCatalogPgAttributeTable());
             RegisterTable(EmptyCatalogTables.PgAttrDef);
-            RegisterTable(EmptyCatalogTables.PgIndex);
+            RegisterTable(new PgCatalogPgIndexTable());
             RegisterTable(new PgCatalogPgNamespaceTable());
             RegisterTable(EmptyCatalogTables.PgExtension);
             RegisterTable(EmptyCatalogTables.PgReplicationSlots);
@@ -58,6 +58,7 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             RegisterFunction(new ArrayToStringFunction());
             RegisterFunction(new FormatTypeFunction());
             RegisterFunction(new PgGetExprFunction());
+            RegisterFunction(new PgExpandArrayFunction());
         }
 
         public static bool TryGetTable(string schema, string table, out PgVirtualTable virtualTable)

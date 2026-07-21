@@ -72,16 +72,8 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
             new("adnum",   PgInt2.Default, PgFormat.Text),
             new("adbin",   PgText.Default, PgFormat.Text));
 
-        // RavenDB has no relational indexes/primary keys in the PG sense (documents are keyed by id).
-        // pgJDBC's getPrimaryKeys() INNER JOINs pg_index; an always-empty table short-circuits that join
-        // to zero rows, so getPrimaryKeys returns empty (no PKs) instead of erroring on the unsupported
-        // multi-join shape. Columns cover what the driver's query references.
-        public static EmptyCatalogTable PgIndex => new("pg_catalog", "pg_index",
-            new("indexrelid",  PgOid.Default,  PgFormat.Text),
-            new("indrelid",    PgOid.Default,  PgFormat.Text),
-            new("indisprimary", PgBool.Default, PgFormat.Text),
-            new("indkey",      PgText.Default, PgFormat.Text),
-            new("indnkeyatts", PgInt2.Default, PgFormat.Text));
+        // pg_index is generated dynamically (a primary-key index over `id` per collection) - see
+        // PgCatalogPgIndexTable.cs.
 
         // RavenDB has no PG extensions; an empty table lets pgAdmin's `count(extname)` probe return 0.
         public static EmptyCatalogTable PgExtension => new("pg_catalog", "pg_extension",

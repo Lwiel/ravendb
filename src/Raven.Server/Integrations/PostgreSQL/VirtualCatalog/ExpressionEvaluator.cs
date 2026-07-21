@@ -64,6 +64,12 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             if (node.TypeCast != null)
                 return TryEvaluate(node.TypeCast.Arg, scope, subqueryResolver, functionResolver, out value);
 
+            // Composite field access: `(expr).field`, e.g. `(information_schema._pg_expandarray(indkey)).n`
+            // in pgJDBC's getPrimaryKeys. The inner expression must evaluate to a composite (a dictionary
+            // keyed by field name, produced by _pg_expandarray); we return the named field.
+            if (node.AIndirection != null)
+                return TryEvaluateIndirection(node.AIndirection, scope, subqueryResolver, functionResolver, out value);
+
             if (node.RelabelType != null)
                 return TryEvaluate(node.RelabelType.Arg, scope, subqueryResolver, functionResolver, out value);
 
@@ -184,6 +190,25 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             }
 
             return functionResolver(name, args, out value);
+        }
+
+        private static bool TryEvaluateIndirection(A_Indirection indirection, RowScope scope, ScalarSubqueryResolver subqueryResolver, ScalarFunctionResolver functionResolver, out object value)
+        {
+            value = null;
+            if (indirection?.Arg == null || indirection.Indirection is not { Count: 1 })
+                return false;
+
+            var field = indirection.Indirection[0]?.String?.Sval;
+            if (string.IsNullOrEmpty(field))
+                return false;
+
+            if (TryEvaluate(indirection.Arg, scope, subqueryResolver, functionResolver, out var inner) == false)
+                return false;
+
+            if (inner is IReadOnlyDictionary<string, object> composite && composite.TryGetValue(field, out value))
+                return true;
+
+            return false;
         }
 
         private static bool TryEvaluateConst(A_Const c, out object value)

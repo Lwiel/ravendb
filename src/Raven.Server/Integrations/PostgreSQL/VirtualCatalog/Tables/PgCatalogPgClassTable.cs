@@ -13,6 +13,7 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
     internal sealed class PgCatalogPgClassTable : PgVirtualTable
     {
         private const string OrdinaryTableRelKind = "r";
+        private const string IndexRelKind = "i";
 
         public override string SchemaName => "pg_catalog";
         public override string TableName => "pg_class";
@@ -38,6 +39,18 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
                     relation.Name,
                     PgCatalogRelations.PublicNamespaceOid,
                     OrdinaryTableRelKind,
+                    0,
+                };
+
+                // Each collection also has a synthetic primary-key index over `id` (relkind 'i'). pgJDBC's
+                // getPrimaryKeys joins pg_class on the index oid to read its name (PK_NAME). relkind 'i' is
+                // excluded by getTables/getColumns' relkind filters, so this doesn't affect them.
+                yield return new object[]
+                {
+                    PgCatalogRelations.PkIndexOid(relation.Oid),
+                    PgCatalogRelations.PkIndexName(relation.Name),
+                    PgCatalogRelations.PublicNamespaceOid,
+                    IndexRelKind,
                     0,
                 };
             }
