@@ -778,17 +778,28 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             if (TryBuildSortPlan(s, projection, out var sortPlan, out var extraSortExpressions) == false)
                 return false;
 
+            // Window functions (e.g. row_number() OVER (PARTITION BY .. ORDER BY ..)) are computed over
+            // the whole filtered set, not per row. Precompute each window column's value per filtered row;
+            // windowValues is null when the projection has no window columns (the common fast path).
+            if (TryComputeWindowColumns(projection, filtered, sources, outerScope, subqueryResolver, functionResolver, out var windowValues) == false)
+                return false;
+
             // Project (real columns first, then any expression-only sort keys appended).
             int totalCells = projection.Count + extraSortExpressions.Count;
             var projectedRows = new List<object[]>(filtered.Count);
-            foreach (var jr in filtered)
+            for (int j = 0; j < filtered.Count; j++)
             {
-                var scope = jr.ToScope(sources);
+                var scope = filtered[j].ToScope(sources);
                 if (outerScope != null)
                     scope = scope.WithParent(outerScope);
                 var cells = new object[totalCells];
                 for (int i = 0; i < projection.Count; i++)
                 {
+                    if (windowValues?[i] != null)
+                    {
+                        cells[i] = windowValues[i][j];
+                        continue;
+                    }
                     if (ExpressionEvaluator.TryEvaluate(projection[i].Expression, scope, subqueryResolver, functionResolver, out var value) == false)
                         return false;
                     cells[i] = value;
@@ -1009,6 +1020,120 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
         }
 
         // Projection planning
+        // Returns the window definition when `expr` is `row_number() OVER (...)`, else null. row_number is
+        // the only window function catalog probes use (pgJDBC's getColumns renumbers attnum with it).
+        private static WindowDef GetRowNumberWindow(Node expr)
+        {
+            var fc = expr?.FuncCall;
+            if (fc?.Over == null)
+                return null;
+            var name = fc.Funcname is { Count: > 0 } ? fc.Funcname[^1]?.String?.Sval : null;
+            return string.Equals(name, "row_number", StringComparison.OrdinalIgnoreCase) ? fc.Over : null;
+        }
+
+        // Computes each row_number() window column across the filtered set: partition the rows by the
+        // PARTITION BY keys, sort each partition by the ORDER BY keys, then number 1..n. Returns per-column
+        // arrays aligned to `filtered` (null entry = not a window column). windowValues stays null when the
+        // projection has no window columns, so the non-window path is untouched.
+        private static bool TryComputeWindowColumns(
+            List<ProjectedTarget> projection,
+            List<JoinExecutor.JoinedRow> filtered,
+            IReadOnlyList<JoinExecutor.SourceInfo> sources,
+            RowScope outerScope,
+            ExpressionEvaluator.ScalarSubqueryResolver subqueryResolver,
+            ExpressionEvaluator.ScalarFunctionResolver functionResolver,
+            out object[][] windowValues)
+        {
+            windowValues = null;
+            object[][] result = null;
+
+            for (int pi = 0; pi < projection.Count; pi++)
+            {
+                var over = GetRowNumberWindow(projection[pi].Expression);
+                if (over == null)
+                    continue;
+
+                result ??= new object[projection.Count][];
+
+                var partitionExprs = over.PartitionClause;
+                var orderNodes = over.OrderClause;
+
+                var partitionKeys = new object[filtered.Count][];
+                var orderKeys = new object[filtered.Count][];
+                for (int j = 0; j < filtered.Count; j++)
+                {
+                    var scope = filtered[j].ToScope(sources);
+                    if (outerScope != null)
+                        scope = scope.WithParent(outerScope);
+
+                    var pk = new object[partitionExprs?.Count ?? 0];
+                    for (int k = 0; k < pk.Length; k++)
+                        if (ExpressionEvaluator.TryEvaluate(partitionExprs[k], scope, subqueryResolver, functionResolver, out pk[k]) == false)
+                            return false;
+                    partitionKeys[j] = pk;
+
+                    var ok = new object[orderNodes?.Count ?? 0];
+                    for (int k = 0; k < ok.Length; k++)
+                    {
+                        var sortExpr = orderNodes[k]?.SortBy?.Node;
+                        if (sortExpr == null)
+                            return false;
+                        if (ExpressionEvaluator.TryEvaluate(sortExpr, scope, subqueryResolver, functionResolver, out ok[k]) == false)
+                            return false;
+                    }
+                    orderKeys[j] = ok;
+                }
+
+                var descFlags = new bool[orderNodes?.Count ?? 0];
+                for (int k = 0; k < descFlags.Length; k++)
+                    descFlags[k] = orderNodes[k]?.SortBy?.SortbyDir == SortByDir.SortbyDesc;
+
+                var groups = new Dictionary<string, List<int>>();
+                for (int j = 0; j < filtered.Count; j++)
+                {
+                    var key = PartitionKeyString(partitionKeys[j]);
+                    if (groups.TryGetValue(key, out var list) == false)
+                        groups[key] = list = new List<int>();
+                    list.Add(j);
+                }
+
+                var values = new object[filtered.Count];
+                foreach (var group in groups.Values)
+                {
+                    group.Sort((x, y) => CompareOrderKeys(orderKeys[x], orderKeys[y], descFlags));
+                    for (int n = 0; n < group.Count; n++)
+                        values[group[n]] = (long)(n + 1); // row_number() is bigint, 1-based
+                }
+                result[pi] = values;
+            }
+
+            windowValues = result;
+            return true;
+        }
+
+        private static string PartitionKeyString(object[] key)
+        {
+            if (key == null || key.Length == 0)
+                return string.Empty;
+            var parts = new string[key.Length];
+            for (int i = 0; i < key.Length; i++)
+                parts[i] = key[i]?.ToString() ?? " ";
+            return string.Join("", parts);
+        }
+
+        private static int CompareOrderKeys(object[] a, object[] b, bool[] desc)
+        {
+            for (int k = 0; k < a.Length; k++)
+            {
+                var c = CompareCells(a[k], b[k]);
+                if (k < desc.Length && desc[k])
+                    c = -c;
+                if (c != 0)
+                    return c;
+            }
+            return 0;
+        }
+
         private sealed record ProjectedTarget(Node Expression, string OutputName, PgType PgType, PgFormat FormatCode);
 
         private static bool TryBuildProjection(IList<Node> targetList, IReadOnlyList<JoinExecutor.SourceInfo> sources, out List<ProjectedTarget> projection)
@@ -1135,6 +1260,10 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             var format = sources.Count > 0 && sources[0].Columns.Count > 0
                 ? sources[0].Columns[0].FormatCode
                 : PgFormat.Text;
+
+            // row_number() OVER (...) yields bigint.
+            if (GetRowNumberWindow(expr) != null)
+                return (PgInt8.Default, format);
 
             // AConst-only expression: derive type from the literal.
             if (expr.AConst != null)

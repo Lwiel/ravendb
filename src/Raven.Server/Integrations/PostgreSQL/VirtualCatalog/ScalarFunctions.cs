@@ -98,6 +98,22 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
         }
     }
 
+    // pg_get_expr(pg_node_tree, relation_oid): decompiles a stored expression (e.g. a column DEFAULT).
+    // RavenDB has no column defaults, so pg_attrdef is empty and the argument is always NULL - we return
+    // NULL. pgJDBC's getColumns reads this as COLUMN_DEF (no default), which is exactly right for us.
+    internal sealed class PgGetExprFunction : ScalarFunction
+    {
+        public override string Name => "pg_get_expr";
+        public override string ResultColumnName => "pg_get_expr";
+        public override PgType PgType => PgText.Default;
+
+        public override bool TryEvaluate(IReadOnlyList<object> args, VirtualQueryContext ctx, out object result)
+        {
+            result = null;
+            return args is { Count: >= 1 and <= 2 };
+        }
+    }
+
     // Concatenates array elements with a delimiter (PG: `array_to_string(arr, delimiter)`).
     // Returns NULL when the array is NULL, matches PG semantics.
     internal sealed class ArrayToStringFunction : ScalarFunction

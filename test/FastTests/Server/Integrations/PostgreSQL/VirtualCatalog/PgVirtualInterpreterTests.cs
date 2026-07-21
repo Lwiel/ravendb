@@ -1475,6 +1475,41 @@ ORDER BY ord";
             Assert.Empty(table.Data);
         }
 
+        // row_number() OVER (PARTITION BY .. ORDER BY ..): pgJDBC's getColumns derives ORDINAL_POSITION
+        // this way. A single constant partition + ORDER BY nspname numbers the 3 namespaces 1,2,3.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Row_number_window_numbers_rows_in_order()
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select nspname, row_number() over (partition by 1 order by nspname) as rn from pg_catalog.pg_namespace order by nspname",
+                EmptyCtx(), out var table));
+
+            Assert.Equal(3, table.Data.Count);
+            Assert.Equal("1", DecodeCell(table, row: 0, column: 1));
+            Assert.Equal("2", DecodeCell(table, row: 1, column: 1));
+            Assert.Equal("3", DecodeCell(table, row: 2, column: 1));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("select nullif('a','a') as x", true)]   // equal -> NULL
+        [InlineData("select nullif('a','b') as x", false)]  // differ -> 'a'
+        public void Nullif_returns_null_when_arguments_equal(string sql, bool expectNull)
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(sql, EmptyCtx(), out var table));
+            Assert.Single(table.Data);
+            var cell = table.Data[0].ColumnData.Span[0];
+            Assert.Equal(expectNull, cell.HasValue == false);
+        }
+
+        // pg_get_expr (used for COLUMN_DEF) always returns NULL - RavenDB has no column defaults.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Pg_get_expr_returns_null()
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute("select pg_get_expr(null, 0) as adsrc", EmptyCtx(), out var table));
+            Assert.Single(table.Data);
+            Assert.False(table.Data[0].ColumnData.Span[0].HasValue);
+        }
+
         private static IReadOnlyDictionary<string, object> BuildParams(params string[] values)
         {
             var d = new Dictionary<string, object>();

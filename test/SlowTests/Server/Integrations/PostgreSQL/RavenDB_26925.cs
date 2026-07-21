@@ -20,7 +20,14 @@ public class RavenDB_26925 : RavenTestBase
     {
     }
 
-    private class Order { public string Company { get; set; } }
+    // Property order matters: it's the column order RqlQuery/pg_attribute report (id first, json last).
+    private class Order
+    {
+        public string Company { get; set; }
+        public System.DateTime OrderedAt { get; set; }
+        public double Freight { get; set; }
+        public object[] Lines { get; set; }
+    }
     private class Company { public string Name { get; set; } }
 
     [RavenFact(RavenTestCategory.PostgreSql)]
@@ -86,16 +93,50 @@ public class RavenDB_26925 : RavenTestBase
 
         var rows = Rows(table);
         var names = rows.Select(r => r["attname"]).ToList();
-        // id (synthetic) first, the user field, then json (synthetic) last - RqlQuery's column order.
-        Assert.Equal(new[] { "id", "Company", "json" }, names);
+        // id (synthetic) first, user fields in document order, then json (synthetic) last - RqlQuery's order.
+        Assert.Equal(new[] { "id", "Company", "OrderedAt", "Freight", "Lines", "json" }, names);
         // id is exposed as text (oid 25), matching RqlQuery's RowDescription.
         Assert.Equal("25", rows[0]["atttypid"]);
+    }
+
+    // The exact getColumns query pgJDBC 42.7.8 (Tableau's driver) sends, run with its bound parameters.
+    // Exercises window function (row_number OVER), nullif, pg_get_expr, subquery-in-FROM, and $N binding.
+    [RavenFact(RavenTestCategory.PostgreSql)]
+    public async Task GetColumns_pgjdbc_query_returns_columns_with_ordinals()
+    {
+        using var store = GetDocumentStore();
+        await Seed(store);
+        var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+        var ctx = new VirtualQueryContext
+        {
+            Database = database,
+            Parameters = new Dictionary<string, object> { ["1"] = "public", ["2"] = "Orders", ["3"] = "%" }
+        };
+
+        const string sql = """
+            SELECT * FROM (SELECT current_database() AS current_database, n.nspname,c.relname,a.attname,a.atttypid,a.attnotnull  OR (t.typtype = 'd' AND t.typnotnull) AS attnotnull,a.atttypmod,a.attlen,t.typtypmod,row_number() OVER (PARTITION BY a.attrelid ORDER BY a.attnum) AS attnum, nullif(a.attidentity, '') as attidentity,nullif(a.attgenerated, '') as attgenerated,pg_catalog.pg_get_expr(def.adbin, def.adrelid) AS adsrc,dsc.description,t.typbasetype,t.typtype  FROM pg_catalog.pg_namespace n  JOIN pg_catalog.pg_class c ON (c.relnamespace = n.oid)  JOIN pg_catalog.pg_attribute a ON (a.attrelid=c.oid)  JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid)  LEFT JOIN pg_catalog.pg_attrdef def ON (a.attrelid=def.adrelid AND a.attnum = def.adnum)  LEFT JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)  LEFT JOIN pg_catalog.pg_class dc ON (dc.oid=dsc.classoid AND dc.relname='pg_class')  LEFT JOIN pg_catalog.pg_namespace dn ON (dc.relnamespace=dn.oid AND dn.nspname='pg_catalog')  WHERE c.relkind in ('r','p','v','f','m') and a.attnum > 0 AND NOT a.attisdropped  AND n.nspname LIKE $1 AND c.relname LIKE $2) c WHERE true  AND attname LIKE $3 ORDER BY nspname,c.relname,attnum
+            """;
+
+        Assert.True(PgVirtualInterpreter.TryExecute(sql, ctx, out var table));
+
+        var rows = Rows(table);
+        var names = rows.Select(r => r["attname"]).ToList();
+        // id (synthetic) first, the user fields in document order, json (synthetic) last.
+        Assert.Equal(new[] { "id", "Company", "OrderedAt", "Freight", "Lines", "json" }, names);
+        // attnum is the window-derived ordinal, 1..N.
+        Assert.Equal(new[] { "1", "2", "3", "4", "5", "6" }, rows.Select(r => r["attnum"]).ToList());
     }
 
     private static async Task Seed(Raven.Client.Documents.IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();
-        await session.StoreAsync(new Order { Company = "companies/1" });
+        await session.StoreAsync(new Order
+        {
+            Company = "companies/1",
+            OrderedAt = new System.DateTime(2026, 3, 1, 10, 30, 0, System.DateTimeKind.Utc),
+            Freight = 12.5,
+            Lines = new object[] { new { Product = "products/1", Qty = 3 } }
+        });
         await session.StoreAsync(new Company { Name = "RavenDB" });
         await session.SaveChangesAsync();
     }
