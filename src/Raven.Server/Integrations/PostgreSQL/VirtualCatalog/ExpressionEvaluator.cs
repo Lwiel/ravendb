@@ -353,6 +353,18 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             if (aExpr.Kind == A_Expr_Kind.AexprIn)
                 return TryEvaluateInExpr(aExpr, scope, subqueryResolver, functionResolver, out value);
 
+            // NULLIF(a, b): NULL when a = b, otherwise a. pgJDBC's getColumns uses `nullif(a.attidentity, '')`.
+            // A NULL operand makes the equality NULL (never 0), so NULLIF returns a unchanged, matching PG.
+            if (aExpr.Kind == A_Expr_Kind.AexprNullif)
+            {
+                if (TryEvaluate(aExpr.Lexpr, scope, subqueryResolver, functionResolver, out var nullifLhs) == false)
+                    return false;
+                if (TryEvaluate(aExpr.Rexpr, scope, subqueryResolver, functionResolver, out var nullifRhs) == false)
+                    return false;
+                value = CompareValues(nullifLhs, nullifRhs) == 0 ? null : nullifLhs;
+                return true;
+            }
+
             // `x op ANY(array_expr)` - true if x op element holds for any array element. The
             // canonical use is `x = ANY(ARRAY(...))`, and we only handle equality here (extend
             // when other operators show up).
