@@ -127,6 +127,28 @@ public class RavenDB_26925 : RavenTestBase
         Assert.Equal(new[] { "1", "2", "3", "4", "5", "6" }, rows.Select(r => r["attnum"]).ToList());
     }
 
+    // pgJDBC's getPrimaryKeys query INNER JOINs pg_index. RavenDB has no PKs, so the always-empty pg_index
+    // short-circuits the join and the query returns empty instead of hitting the JOIN-not-supported error.
+    [RavenFact(RavenTestCategory.PostgreSql)]
+    public async Task GetPrimaryKeys_pgjdbc_query_returns_empty()
+    {
+        using var store = GetDocumentStore();
+        await Seed(store);
+        var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+        var ctx = new VirtualQueryContext
+        {
+            Database = database,
+            Parameters = new Dictionary<string, object> { ["1"] = "public", ["2"] = "Orders" }
+        };
+
+        const string sql = """
+            SELECT result.TABLE_CAT AS "TABLE_CAT", result.TABLE_SCHEM AS "TABLE_SCHEM", result.TABLE_NAME AS "TABLE_NAME", result.COLUMN_NAME AS "COLUMN_NAME", result.KEY_SEQ AS "KEY_SEQ", result.PK_NAME AS "PK_NAME" FROM (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM, ct.relname AS TABLE_NAME, a.attname AS COLUMN_NAME, (information_schema._pg_expandarray(i.indkey)).n AS KEY_SEQ, ci.relname AS PK_NAME, information_schema._pg_expandarray(i.indkey) AS KEYS, a.attnum AS A_ATTNUM, i.indnkeyatts as KEY_COUNT FROM pg_catalog.pg_class ct JOIN pg_catalog.pg_attribute a ON (ct.oid = a.attrelid) JOIN pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid) JOIN pg_catalog.pg_index i ON ( a.attrelid = i.indrelid) JOIN pg_catalog.pg_class ci ON (ci.oid = i.indexrelid) WHERE true AND n.nspname = $1 AND ct.relname = $2 AND i.indisprimary) result where result.A_ATTNUM = (result.KEYS).x AND result.KEY_SEQ <= KEY_COUNT ORDER BY result.table_name, result.pk_name, result.key_seq
+            """;
+
+        Assert.True(PgVirtualInterpreter.TryExecute(sql, ctx, out var table));
+        Assert.Empty(table.Data);
+    }
+
     private static async Task Seed(Raven.Client.Documents.IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();
