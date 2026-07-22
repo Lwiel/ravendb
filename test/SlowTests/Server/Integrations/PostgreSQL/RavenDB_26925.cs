@@ -156,6 +156,36 @@ public class RavenDB_26925 : RavenTestBase
         Assert.Equal("1", rows[0]["KEY_SEQ"]);
     }
 
+    // Tableau's pg_constraint-based getPrimaryKeys, parameterized ($1/$2). At Describe time (no bound
+    // params) the schema must still resolve to the 6 output columns; at Execute time (params bound) it
+    // must report id as the PK. A regression here returns a 0-column result that crashes the JDBC driver.
+    private const string PkConstraintQuery =
+        "SELECT result.TABLE_CAT AS \"TABLE_CAT\", result.TABLE_SCHEM AS \"TABLE_SCHEM\", result.TABLE_NAME AS \"TABLE_NAME\", result.COLUMN_NAME AS \"COLUMN_NAME\", result.KEY_SEQ AS \"KEY_SEQ\", result.PK_NAME AS \"PK_NAME\" FROM (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM, ct.relname AS TABLE_NAME, a.attname AS COLUMN_NAME, (information_schema._pg_expandarray(con.conkey)).n AS KEY_SEQ, con.conname AS PK_NAME, information_schema._pg_expandarray(con.conkey) AS KEYS, a.attnum AS A_ATTNUM FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class ct ON (con.conrelid = ct.oid) JOIN pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid) JOIN pg_catalog.pg_attribute a ON (a.attrelid = ct.oid) WHERE con.contype = 'p' AND n.nspname = $1 AND ct.relname = $2 ) result where result.A_ATTNUM = (result.KEYS).x ORDER BY result.table_name, result.pk_name, result.key_seq";
+
+    [RavenFact(RavenTestCategory.PostgreSql)]
+    public async Task GetPrimaryKeys_pgconstraint_describe_schema_has_columns()
+    {
+        using var store = GetDocumentStore();
+        await Seed(store);
+        var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+        // Describe time: no bound parameters.
+        var describeCtx = new VirtualQueryContext { Database = database };
+        Assert.True(PgVirtualInterpreter.TryExecute(PkConstraintQuery, describeCtx, out var describeTable));
+        Assert.Equal(6, describeTable.Columns.Count);
+
+        // Execute time: parameters bound -> id is the PK.
+        var executeCtx = new VirtualQueryContext
+        {
+            Database = database,
+            Parameters = new Dictionary<string, object> { ["1"] = "public", ["2"] = "Companies" }
+        };
+        Assert.True(PgVirtualInterpreter.TryExecute(PkConstraintQuery, executeCtx, out var executeTable));
+        var rows = Rows(executeTable);
+        Assert.Single(rows);
+        Assert.Equal("id", rows[0]["COLUMN_NAME"]);
+    }
+
     private static async Task Seed(Raven.Client.Documents.IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();

@@ -134,13 +134,40 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             if (string.IsNullOrWhiteSpace(text))
                 return false;
 
-            // indkey is a space-separated int2vector (e.g. "1"); take the first (only) element.
-            var firstToken = text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
-            if (long.TryParse(firstToken, NumberStyles.Integer, CultureInfo.InvariantCulture, out var element) == false)
+            // The array arrives either as a space-separated int2vector ("1", from pg_index.indkey) or a
+            // brace-wrapped array literal ("{1}", from pg_constraint.conkey). Extract the first integer -
+            // RavenDB primary keys are always the single `id` column, so one element is enough.
+            if (TryExtractFirstInteger(text, out var element) == false)
                 return false;
 
             result = new Dictionary<string, object> { ["x"] = element, ["n"] = 1L };
             return true;
+        }
+
+        private static bool TryExtractFirstInteger(string text, out long value)
+        {
+            value = 0;
+            var start = -1;
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (char.IsDigit(text[i]))
+                {
+                    if (start < 0)
+                        start = i;
+                }
+                else if (start >= 0)
+                {
+                    break;
+                }
+            }
+            if (start < 0)
+                return false;
+
+            var end = start;
+            while (end < text.Length && char.IsDigit(text[end]))
+                end++;
+
+            return long.TryParse(text.AsSpan(start, end - start), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
         }
     }
 
