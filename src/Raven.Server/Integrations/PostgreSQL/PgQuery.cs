@@ -139,6 +139,28 @@ namespace Raven.Server.Integrations.PostgreSQL
                 var processedParameter = rawParameter == null ? null : pgType.FromBytes(rawParameter, dataFormat);
                 Parameters.Add((i + 1).ToString(), processedParameter);
             }
+
+            // The client's requested RESULT format is only known now (Bind), but the columns were created
+            // at schema time (Describe, before Bind) with the default text format. Sync each column so both
+            // the RowDescription and the DataRow value encoding use what the client asked for. Without this
+            // a client that requests binary results - pgJDBC once a statement is server-side prepared -
+            // decodes our text-encoded values as binary and crashes (e.g. a 2-byte "42" read as int8).
+            foreach (var column in Columns.Values)
+                column.FormatCode = ResolveResultColumnFormat(column.ColumnIndex);
+        }
+
+        // Result column format per the Bind message: 0 codes => all text; 1 code => applies to every
+        // column; N codes => one per column, by position.
+        private PgFormat ResolveResultColumnFormat(short columnIndex)
+        {
+            return _resultColumnFormatCodes.Length switch
+            {
+                0 => PgFormat.Text,
+                1 => _resultColumnFormatCodes[0] == 1 ? PgFormat.Binary : PgFormat.Text,
+                _ => columnIndex >= 0 && columnIndex < _resultColumnFormatCodes.Length && _resultColumnFormatCodes[columnIndex] == 1
+                    ? PgFormat.Binary
+                    : PgFormat.Text
+            };
         }
     }
 }
