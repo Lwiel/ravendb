@@ -55,6 +55,29 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
             Assert.Equal(expected, Translate(sql));
         }
 
+        // Tableau opens a table with `SELECT * FROM t WHERE 1=0` to fetch the column schema with no rows.
+        // A constant-false WHERE must fold to `limit 0` (schema preserved, zero rows), not fail to translate.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void WhereConstantFalse_FoldsToLimitZero()
+        {
+            // limit 0, 0 = offset 0, take 0 -> zero rows (RqlQuery still infers the column schema).
+            Assert.Equal("from 'Companies' limit 0, 0", Translate("SELECT * FROM \"public\".\"Companies\" WHERE 1=0"));
+        }
+
+        // A constant-true WHERE is a no-op filter and is dropped.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void WhereConstantTrue_IsDropped()
+        {
+            Assert.Equal("from 'Companies'", Translate("SELECT * FROM \"public\".\"Companies\" WHERE 1=1"));
+        }
+
+        // A constant AND'd with a real predicate simplifies to just the real predicate.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void WhereConstantTrueAndedWithRealPredicate_KeepsOnlyReal()
+        {
+            Assert.Equal("from 'orders' where amount > 10", Translate("SELECT * FROM orders WHERE 1=1 AND amount > 10"));
+        }
+
         [RavenFact(RavenTestCategory.PostgreSql)]
         public void WhereStringEqualsEmpty_PreservesEmptyLiteral()
         {
