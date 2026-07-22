@@ -31,7 +31,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
         // Normally suppressed (the client named its columns), but when the SQL projection explicitly
         // selects the synthetic `json` column - e.g. Tableau's data preview lists CAST("t"."json" AS TEXT)
         // - we must return it, or the result has one fewer column than the client asked for.
-        protected override bool IncludePowerBIJsonColumn => _includeJsonColumn;
+        protected override bool IncludeJsonColumn => _includeJsonColumn;
 
         protected override async Task<ICollection<PgColumn>> GenerateSchema()
         {
