@@ -40,8 +40,17 @@ namespace Raven.Server.Integrations.PostgreSQL.Messages
         protected override async Task HandleMessage(PgTransaction transaction, MessageBuilder messageBuilder, PipeWriter writer, CancellationToken token)
         {
             if (transaction.State == TransactionState.Idle)
-                throw new PgErrorException(PgErrorCodes.NoActiveSqlTransaction,
-                    "Describe message was received when no transaction is taking place.");
+            {
+                // A Describe on a named prepared statement can arrive between transaction cycles (the
+                // statement outlives Sync). Re-activate it and continue; a portal, or an unnamed/unknown
+                // statement, is a genuine "nothing to describe" error.
+                if (PgObjectType != PgObjectType.PreparedStatement
+                    || transaction.TryActivateNamedStatement(ObjectName) == false)
+                {
+                    throw new PgErrorException(PgErrorCodes.NoActiveSqlTransaction,
+                        "Describe message was received when no transaction is taking place.");
+                }
+            }
 
             var (schema, parameterDataTypes) = await transaction.Describe();
 
