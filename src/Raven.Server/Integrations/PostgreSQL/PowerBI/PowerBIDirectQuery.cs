@@ -33,7 +33,7 @@ namespace Raven.Server.Integrations.PostgreSQL.PowerBI
 
         protected override bool IncludeDocumentIdColumn => false;
 
-        protected override bool IncludePowerBIJsonColumn => false;
+        protected override bool IncludeJsonColumn => false;
 
         protected override DynamicJsonValue BeforeRow(BlittableJsonReaderObject jsonResult, short? jsonIndex)
         {
@@ -41,7 +41,7 @@ namespace Raven.Server.Integrations.PostgreSQL.PowerBI
         }
 
         // No AfterRow override: the base PowerBIRqlQuery.AfterRow chain already short-circuits here
-        // (json-write gated off by IncludePowerBIJsonColumn, no const-projection cells), so an empty
+        // (json-write gated off by IncludeJsonColumn, no const-projection cells), so an empty
         // override would save nothing and would risk swallowing const-projection cells if ever passed.
 
         public static bool TryParse(string queryText, int[] parametersDataTypes, DocumentDatabase documentDatabase, out PgQuery pgQuery)
