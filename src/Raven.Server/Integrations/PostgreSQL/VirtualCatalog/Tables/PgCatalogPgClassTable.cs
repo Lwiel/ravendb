@@ -6,10 +6,8 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
 {
     // pg_class: PostgreSQL's catalog of relations (tables, indexes, views, ...). JDBC/ODBC drivers
     // (and Tableau's native PostgreSQL connector through them) enumerate tables by joining pg_class to
-    // pg_namespace on relnamespace, filtering relkind, rather than reading information_schema. This
-    // table therefore emits one ordinary-table row (relkind 'r') per RavenDB collection, in the public
-    // namespace. Previously it was an empty CSV snapshot with no relnamespace column, so getTables()
-    // came back empty.
+    // pg_namespace on relnamespace, filtering relkind, rather than reading information_schema. Emits one
+    // ordinary-table row (relkind 'r') per RavenDB collection, in the public namespace.
     internal sealed class PgCatalogPgClassTable : PgVirtualTable
     {
         private const string OrdinaryTableRelKind = "r";
