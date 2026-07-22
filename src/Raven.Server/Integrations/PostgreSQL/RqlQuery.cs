@@ -38,7 +38,7 @@ namespace Raven.Server.Integrations.PostgreSQL
 
         protected virtual bool IncludeDocumentIdColumn => true;
 
-        protected virtual bool IncludePowerBIJsonColumn => true;
+        protected virtual bool IncludeJsonColumn => true;
 
         ~RqlQuery()
         {
@@ -235,7 +235,7 @@ namespace Raven.Server.Integrations.PostgreSQL
                     break;
             }
 
-            if (IncludePowerBIJsonColumn)
+            if (IncludeJsonColumn)
             {
                 if (Columns.TryGetValue(PgSyntheticColumns.Json, out var jsonColumn))
                 {
@@ -356,7 +356,7 @@ namespace Raven.Server.Integrations.PostgreSQL
 
         protected short? GetPowerBIJsonColumnIndex()
         {
-            if (IncludePowerBIJsonColumn == false)
+            if (IncludeJsonColumn == false)
                 return null;
 
             return Columns.TryGetValue(PgSyntheticColumns.Json, out var jsonCol)
@@ -372,7 +372,7 @@ namespace Raven.Server.Integrations.PostgreSQL
 
         protected virtual DynamicJsonValue BeforeRow(BlittableJsonReaderObject jsonResult, short? jsonIndex)
         {
-            if (IncludePowerBIJsonColumn == false || jsonIndex == null)
+            if (IncludeJsonColumn == false || jsonIndex == null)
                 return null;
 
             jsonResult.Modifications = new DynamicJsonValue(jsonResult);
@@ -392,7 +392,7 @@ namespace Raven.Server.Integrations.PostgreSQL
 
         protected virtual void AfterRow(BlittableJsonReaderObject jsonResult, ReadOnlyMemory<byte>?[] row, short? jsonIndex, DocumentsOperationContext context)
         {
-            if (IncludePowerBIJsonColumn == false || jsonIndex == null)
+            if (IncludeJsonColumn == false || jsonIndex == null)
                 return;
 
             if (jsonResult.Modifications == null)

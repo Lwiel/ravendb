@@ -755,7 +755,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
         // True if any projection target references the synthetic `json` column (possibly wrapped in a
         // CAST, as Tableau emits). The translator drops json from the RQL projection - it's synthesized
-        // by the row writer - so we flag it here to switch that synthesis on (IncludePowerBIJsonColumn).
+        // by the row writer - so we flag it here to switch that synthesis on (IncludeJsonColumn).
         private static bool ProjectionIncludesJsonColumn(SelectStmt selectStmt)
         {
             if (selectStmt?.TargetList == null)
