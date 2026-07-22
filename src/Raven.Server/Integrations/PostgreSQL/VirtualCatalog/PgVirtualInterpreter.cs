@@ -1265,6 +1265,17 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             if (GetRowNumberWindow(expr) != null)
                 return (PgInt8.Default, format);
 
+            // (_pg_expandarray(...)).x / .n composite field access yields an integer (the array element
+            // and its 1-based ordinal). pgJDBC's getPrimaryKeys reads KEY_SEQ from `.n` and expects an
+            // integer column type - advertising the default text makes Tableau reject it with
+            // "Incorrect data type string, getting expected integer type".
+            if (expr.AIndirection?.Indirection is { Count: 1 } indirection)
+            {
+                var field = indirection[0]?.String?.Sval;
+                if (field is "x" or "n")
+                    return (PgInt4.Default, format);
+            }
+
             // AConst-only expression: derive type from the literal.
             if (expr.AConst != null)
                 return (InferConstType(expr.AConst), format);

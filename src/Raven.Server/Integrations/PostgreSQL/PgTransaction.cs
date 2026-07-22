@@ -100,6 +100,23 @@ namespace Raven.Server.Integrations.PostgreSQL
             _currentQuery.Bind(parameters, parameterFormatCodes, resultColumnFormatCodes);
         }
 
+        // Re-activates a named prepared statement (parsed in an earlier extended-protocol cycle) so a
+        // Describe that arrives while Idle can resolve it. Named statements live in Session.NamedStatements
+        // until DEALLOCATE / teardown, so describing one between transaction cycles is valid PG behavior -
+        // Npgsql/pgJDBC do exactly this when reusing a prepared statement. Returns false for an unnamed or
+        // unknown statement, which the caller treats as a genuine "no active transaction" error.
+        public bool TryActivateNamedStatement(string statementName)
+        {
+            if (statementName.IsNullOrWhiteSpace())
+                return false;
+            if (Session.NamedStatements.TryGetValue(statementName, out _currentQuery) == false)
+                return false;
+
+            _currentQueryIsNamed = true; // borrowed - don't dispose on Sync/Close
+            State = TransactionState.InTransaction;
+            return true;
+        }
+
         public async Task<(ICollection<PgColumn> schema, int[] parameterDataTypes)> Describe()
         {
             return (await _currentQuery.Init(), _currentQuery.ParametersDataTypes);
