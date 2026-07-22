@@ -63,10 +63,10 @@ namespace Raven.Server.Integrations.PostgreSQL
                 if (PgSqlToRqlTranslator.TryParseScalarCount(queryText, documentDatabase, out var countRql, out var countColumns))
                     return new PgScalarCountQuery(countRql, parametersDataTypes, documentDatabase, countColumns);
 
-                if (PgSqlToRqlTranslator.TryParse(queryText, parametersDataTypes, documentDatabase, out var rql, out var hasExplicitProjection))
+                if (PgSqlToRqlTranslator.TryParse(queryText, parametersDataTypes, documentDatabase, out var rql, out var hasExplicitProjection, out var includeJsonColumn))
                 {
                     return hasExplicitProjection
-                        ? new PgSqlTranslatedRqlQuery(rql, parametersDataTypes, documentDatabase)
+                        ? new PgSqlTranslatedRqlQuery(rql, parametersDataTypes, documentDatabase, includeJsonColumn: includeJsonColumn)
                         : new RqlQuery(rql, parametersDataTypes, documentDatabase);
                 }
 

@@ -78,6 +78,28 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
             Assert.Equal("from 'orders' where amount > 10", Translate("SELECT * FROM orders WHERE 1=1 AND amount > 10"));
         }
 
+        // Tableau's data preview projects alias-qualified columns wrapped in CAST(col AS TEXT). The cast is
+        // unwrapped (RavenDB doesn't reshape projected values) and the table alias is stripped.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void CastAndAliasQualifiedColumns_InProjection_Translate()
+        {
+            var rql = Translate("SELECT CAST(\"t\".\"Name\" AS TEXT) AS \"Name\", \"t\".\"Employees\" AS \"Employees\" FROM \"public\".\"Companies\" \"t\"");
+            Assert.StartsWith("from 'Companies' select", rql);
+            Assert.Contains("Name", rql);
+            Assert.Contains("Employees", rql);
+        }
+
+        // Explicitly selecting the synthetic `json` column (even wrapped in CAST) must set the include-json
+        // flag so the result still contains the json column the client asked for.
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void ProjectionSelectingJson_SetsIncludeJsonFlag()
+        {
+            var sql = "SELECT CAST(\"t\".\"json\" AS TEXT) AS \"json\" FROM \"public\".\"Companies\" \"t\"";
+            Assert.True(Raven.Server.Integrations.PostgreSQL.Translation.PgSqlToRqlTranslator.TryParse(
+                sql, Array.Empty<int>(), null, out _, out _, out var includeJson));
+            Assert.True(includeJson);
+        }
+
         [RavenFact(RavenTestCategory.PostgreSql)]
         public void WhereStringEqualsEmpty_PreservesEmptyLiteral()
         {
