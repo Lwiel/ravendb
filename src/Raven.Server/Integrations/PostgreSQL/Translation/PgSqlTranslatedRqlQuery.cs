@@ -17,16 +17,21 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
     internal sealed class PgSqlTranslatedRqlQuery : RqlQuery
     {
         private readonly IReadOnlyList<ConstProjection> _constProjections;
+        private readonly bool _includeJsonColumn;
 
-        public PgSqlTranslatedRqlQuery(string queryString, int[] parametersDataTypes, DocumentDatabase documentDatabase, int? limit = null, IReadOnlyList<ConstProjection> constProjections = null)
+        public PgSqlTranslatedRqlQuery(string queryString, int[] parametersDataTypes, DocumentDatabase documentDatabase, int? limit = null, IReadOnlyList<ConstProjection> constProjections = null, bool includeJsonColumn = false)
             : base(queryString, parametersDataTypes, documentDatabase, limit)
         {
             _constProjections = constProjections is { Count: > 0 } ? constProjections : null;
+            _includeJsonColumn = includeJsonColumn;
         }
 
         protected override bool IncludeDocumentIdColumn => false;
 
-        protected override bool IncludePowerBIJsonColumn => false;
+        // Normally suppressed (the client named its columns), but when the SQL projection explicitly
+        // selects the synthetic `json` column - e.g. Tableau's data preview lists CAST("t"."json" AS TEXT)
+        // - we must return it, or the result has one fewer column than the client asked for.
+        protected override bool IncludePowerBIJsonColumn => _includeJsonColumn;
 
         protected override async Task<ICollection<PgColumn>> GenerateSchema()
         {

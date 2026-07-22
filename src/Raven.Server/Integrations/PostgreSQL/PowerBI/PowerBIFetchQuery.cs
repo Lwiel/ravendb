@@ -452,17 +452,19 @@ namespace Raven.Server.Integrations.PostgreSQL.PowerBI
             if (TryGetSimplePublicRangeVarSelect(queryText, out var selectStmt) == false)
                 return false;
 
-            if (PgSqlToRqlTranslator.TryParse(queryText, parametersDataTypes, documentDatabase, out var rql) == false)
+            if (PgSqlToRqlTranslator.TryParse(queryText, parametersDataTypes, documentDatabase, out var rql, out _, out var includeJsonColumn) == false)
                 return false;
 
             // Route to PowerBIRqlQuery only when the shape wants the synthetic id/json columns
             // (see WantsPowerBISyntheticColumns); otherwise PgSqlTranslatedRqlQuery keeps the
-            // RowDescription column-for-column.
+            // RowDescription column-for-column - but still emit the json blob when the projection
+            // explicitly selected it (e.g. Tableau's CAST("t"."json" AS TEXT) preview), or the result
+            // would have one fewer column than the client asked for.
             var wantsSyntheticColumns = WantsPowerBISyntheticColumns(selectStmt);
 
             pgQuery = wantsSyntheticColumns
                 ? new PowerBIRqlQuery(rql, parametersDataTypes, documentDatabase, replaces: null, limit: null)
-                : new PgSqlTranslatedRqlQuery(rql, parametersDataTypes, documentDatabase);
+                : new PgSqlTranslatedRqlQuery(rql, parametersDataTypes, documentDatabase, includeJsonColumn: includeJsonColumn);
             return true;
         }
 
