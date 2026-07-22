@@ -991,7 +991,105 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             if (SqlWhereParser.TryParse(whereNode, fromAlias, out var parsed) == false)
                 throw new NotSupportedException("Unsupported WHERE clause");
 
-            EmitWhere(q, parsed, wrapInSubclause: false);
+            // A wholly-constant WHERE folds without touching data. Tableau opens a table with
+            // `SELECT * FROM t WHERE 1=0` to fetch the column schema with no rows: fold to `limit 0`
+            // (RqlQuery still infers the schema from a sample doc). `WHERE 1=1` folds to no filter.
+            var folded = TryFoldConstant(parsed);
+            if (folded == false)
+            {
+                q.Take(0);
+                return;
+            }
+            if (folded == true)
+                return;
+
+            // Mixed predicate: strip any identity constants (true under AND, false under OR) so EmitWhere
+            // only sees real, data-dependent predicates and never a dangling boolean operator.
+            EmitWhere(q, SimplifyConstants(parsed), wrapInSubclause: false);
+        }
+
+        // The constant truth value of a predicate built only from constants, or null if any part depends
+        // on data. Folds `WHERE 1=0`/`1=1` including under AND (false absorbs) / OR (true absorbs) / NOT.
+        private static bool? TryFoldConstant(ParsedWhere parsed)
+        {
+            switch (parsed)
+            {
+                case ParsedConstant c:
+                    return c.Value;
+
+                case ParsedNot n:
+                    return TryFoldConstant(n.Child) is { } inner ? !inner : (bool?)null;
+
+                case ParsedAnd a:
+                {
+                    var allTrue = true;
+                    foreach (var child in a.Children)
+                    {
+                        var f = TryFoldConstant(child);
+                        if (f == false)
+                            return false;
+                        if (f == null)
+                            allTrue = false;
+                    }
+                    return allTrue ? true : (bool?)null;
+                }
+
+                case ParsedOr o:
+                {
+                    var allFalse = true;
+                    foreach (var child in o.Children)
+                    {
+                        var f = TryFoldConstant(child);
+                        if (f == true)
+                            return true;
+                        if (f == null)
+                            allFalse = false;
+                    }
+                    return allFalse ? false : (bool?)null;
+                }
+
+                default:
+                    return null;
+            }
+        }
+
+        // Removes identity constants from a non-constant predicate tree (true children under AND, false
+        // children under OR). Only called when TryFoldConstant returned null, so every AND/OR keeps at
+        // least one real child.
+        private static ParsedWhere SimplifyConstants(ParsedWhere parsed)
+        {
+            switch (parsed)
+            {
+                case ParsedAnd a:
+                {
+                    var kept = new List<ParsedWhere>();
+                    foreach (var child in a.Children)
+                    {
+                        if (TryFoldConstant(child) == true)
+                            continue; // AND identity
+                        kept.Add(SimplifyConstants(child));
+                    }
+                    return kept.Count == 1 ? kept[0] : new ParsedAnd(kept);
+                }
+
+                case ParsedOr o:
+                {
+                    var kept = new List<ParsedWhere>();
+                    foreach (var child in o.Children)
+                    {
+                        if (TryFoldConstant(child) == false)
+                            continue; // OR identity
+                        kept.Add(SimplifyConstants(child));
+                    }
+                    return kept.Count == 1 ? kept[0] : new ParsedOr(kept);
+                }
+
+                case ParsedNot n:
+                    return new ParsedNot(SimplifyConstants(n.Child));
+
+                default:
+                    return parsed;
+            }
         }
 
         private static void EmitWhere(AsyncDocumentQuery<JObject> q, ParsedWhere parsed, bool wrapInSubclause)

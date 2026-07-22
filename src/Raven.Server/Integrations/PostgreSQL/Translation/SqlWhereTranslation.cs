@@ -18,6 +18,11 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
     internal sealed record ParsedBetween(IReadOnlyList<string> FieldPath, ParsedValue Lower, ParsedValue Upper) : ParsedWhere;
     internal sealed record ParsedIsNull(IReadOnlyList<string> FieldPath, bool Negated) : ParsedWhere;
 
+    // A predicate with no column reference that folds to a constant at translate time, e.g. Tableau's
+    // `WHERE 1=0` schema probe (fetch the columns, no rows) or `WHERE 1=1`. The translator turns a
+    // constant-false whole-WHERE into `limit 0` and drops a constant-true one.
+    internal sealed record ParsedConstant(bool Value) : ParsedWhere;
+
     internal enum ParsedValueKind { String, Long, Double, Bool, Null, Timestamp, Parameter }
 
     // For the Parameter kind, Raw holds the 1-based PG parameter index (int) from a $N
@@ -126,6 +131,17 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
             if (IsKnownBinaryOp(op) == false)
                 return false;
+
+            // Constant comparison with no column on either side (e.g. `WHERE 1=0` / `WHERE 1=1`): fold it
+            // now. TryExtractScalar returns false for a ColumnRef, so a real `col = 5` skips this and takes
+            // the field-path path below. Parameters ($N) aren't known at translate time, so exclude them.
+            if (TryExtractScalar(aExpr.Lexpr, out var leftConst) && leftConst.Kind != ParsedValueKind.Parameter &&
+                TryExtractScalar(aExpr.Rexpr, out var rightConst) && rightConst.Kind != ParsedValueKind.Parameter &&
+                TryEvaluateConstComparison(leftConst, rightConst, op, out var constResult))
+            {
+                result = new ParsedConstant(constResult);
+                return true;
+            }
 
             if (TryExtractFieldPath(aExpr.Lexpr, outerAliasToStrip, out var leftField) == false)
                 return false;
@@ -286,6 +302,42 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
         private static bool IsKnownBinaryOp(string op) =>
             op is "=" or "!=" or "<>" or "<" or "<=" or ">" or ">=";
+
+        // Evaluates a comparison between two literal values (numbers, strings, or bools). Returns false if
+        // the operands aren't comparable (mixed/unsupported kinds) so the caller can bail cleanly.
+        private static bool TryEvaluateConstComparison(ParsedValue left, ParsedValue right, string op, out bool result)
+        {
+            result = false;
+
+            int cmp;
+            if (left.Kind == ParsedValueKind.Long && right.Kind == ParsedValueKind.Long)
+                cmp = ((long)left.Raw).CompareTo((long)right.Raw);
+            else if (IsNumeric(left) && IsNumeric(right))
+                cmp = ToDouble(left).CompareTo(ToDouble(right));
+            else if (left.Kind == ParsedValueKind.Bool && right.Kind == ParsedValueKind.Bool)
+                cmp = ((bool)left.Raw).CompareTo((bool)right.Raw);
+            else if (left.Kind == ParsedValueKind.String && right.Kind == ParsedValueKind.String)
+                cmp = string.CompareOrdinal((string)left.Raw, (string)right.Raw);
+            else
+                return false;
+
+            result = op switch
+            {
+                "="  => cmp == 0,
+                "!=" => cmp != 0,
+                "<>" => cmp != 0,
+                "<"  => cmp < 0,
+                "<=" => cmp <= 0,
+                ">"  => cmp > 0,
+                ">=" => cmp >= 0,
+                _    => false
+            };
+            return true;
+        }
+
+        private static bool IsNumeric(ParsedValue v) => v.Kind is ParsedValueKind.Long or ParsedValueKind.Double;
+
+        private static double ToDouble(ParsedValue v) => v.Kind == ParsedValueKind.Long ? (long)v.Raw : (double)v.Raw;
 
         private static bool IsAExprKind(A_Expr expr, A_Expr_Kind kind) =>
             expr?.Kind == kind;
