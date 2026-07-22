@@ -70,9 +70,13 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
         // whether to suppress RqlQuery's auto-included id/json columns - if the user
         // explicitly listed columns, they shouldn't get magic extras tacked on.
         public static bool TryParse(string sql, int[] parameterTypes, DocumentDatabase documentDatabase, out string rql, out bool hasExplicitProjection)
+            => TryParse(sql, parameterTypes, documentDatabase, out rql, out hasExplicitProjection, out _);
+
+        public static bool TryParse(string sql, int[] parameterTypes, DocumentDatabase documentDatabase, out string rql, out bool hasExplicitProjection, out bool includeJsonColumn)
         {
             rql = null;
             hasExplicitProjection = false;
+            includeJsonColumn = false;
 
             if (Logger.IsDebugEnabled)
                 Logger.Debug($"{nameof(PgSqlToRqlTranslator)}.{nameof(TryParse)} invoked with SQL: {sql}");
@@ -103,6 +107,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                     throw new NotSupportedException("Only SELECT statements are supported.");
 
                 hasExplicitProjection = HasExplicitProjection(stmt.Stmt.SelectStmt);
+                includeJsonColumn = ProjectionIncludesJsonColumn(stmt.Stmt.SelectStmt);
                 rql = TranslateSelectStatement(stmt.Stmt.SelectStmt, documentDatabase);
                 return LogSuccess(sql, rql);
             }
@@ -748,6 +753,28 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             return target.ResTarget?.Val?.FuncCall != null;
         }
 
+        // True if any projection target references the synthetic `json` column (possibly wrapped in a
+        // CAST, as Tableau emits). The translator drops json from the RQL projection - it's synthesized
+        // by the row writer - so we flag it here to switch that synthesis on (IncludePowerBIJsonColumn).
+        private static bool ProjectionIncludesJsonColumn(SelectStmt selectStmt)
+        {
+            if (selectStmt?.TargetList == null)
+                return false;
+
+            foreach (var t in selectStmt.TargetList)
+            {
+                var val = t?.ResTarget?.Val;
+                while (val != null && (val.TypeCast?.Arg != null || val.RelabelType?.Arg != null))
+                    val = val.TypeCast?.Arg ?? val.RelabelType.Arg;
+
+                var fields = val?.ColumnRef?.Fields;
+                if (fields is { Count: > 0 } && fields[^1]?.String?.Sval is { } last && PgSyntheticColumns.IsJsonColumn(last))
+                    return true;
+            }
+
+            return false;
+        }
+
         // Returns parallel arrays: projectionFields are the RQL expressions, projectionAliases
         // are the SQL `AS <alias>` names (defaulting to the field expression itself when the
         // SQL projection had no explicit alias). QueryData.Fields/Projections renders
@@ -793,6 +820,16 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
         private static string TranslateSelectTargetValue(Node val, string fromAlias)
         {
+            // Unwrap CAST(expr AS type) / RelabelType wrappers. Tableau's data-preview projects each
+            // column as `CAST(col AS TEXT)`; RavenDB doesn't reshape values in a projection, so we
+            // project the underlying column and let the client read the value. Only these harmless
+            // wrappers are unwrapped - an arbitrary expression still falls through to Unsupported.
+            while (val != null && (val.TypeCast?.Arg != null || val.RelabelType?.Arg != null))
+                val = val.TypeCast?.Arg ?? val.RelabelType.Arg;
+
+            if (val == null)
+                throw UnsupportedSelectProjection();
+
             if (val.ColumnRef != null)
             {
                 var fieldName = ExtractFieldName(val, fromAlias);
