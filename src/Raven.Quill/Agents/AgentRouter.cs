@@ -16,8 +16,6 @@ public sealed record AgentRequest(
     IReadOnlyDictionary<string, JsonElement> Parameters,
     ConversationLifetime? Lifetime = null);
 
-// StartedFresh: this turn rolled a returning chat to a new conversation (idle-expired), so the
-// prior context is gone; false on genuine first contact
 public sealed record AgentRunResult(object Answer, string ConversationId, bool StartedFresh = false);
 
 public interface IAgentRouter
@@ -153,7 +151,6 @@ internal sealed class AgentRouter(
         return rolled;
     }
 
-    // the preview outlives the transcript, so a new conversation is a missing preview or one idle past the window
     internal static async Task<(bool IsNewConversation, bool Rolled)> UpsertPreviewAsync(
         IAsyncDocumentSession session, AgentRequest request, string agent, string conversationId, string reply,
         DateTime nowUtc, CancellationToken ct)
