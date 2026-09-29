@@ -123,6 +123,60 @@ public class RavenDB_26925 : RavenTestBase
         Assert.Equal(new[] { "1", "2", "3", "4", "5", "6" }, rows.Select(r => r["attnum"]).ToList());
     }
 
+    // pgJDBC's getPrimaryKeys query. Every RavenDB collection is keyed by its document `id`, so this
+    // reports `id` as the single-column primary key (via the synthetic pg_index + _pg_expandarray +
+    // composite field access). That's what lets Tableau offer relationships between collections.
+    [RavenFact(RavenTestCategory.PostgreSql)]
+    public async Task GetPrimaryKeys_pgjdbc_query_reports_id_as_primary_key()
+    {
+        using var store = GetDocumentStore();
+        await Seed(store);
+        var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+        var ctx = new VirtualQueryContext
+        {
+            Database = database,
+            Parameters = new Dictionary<string, object> { ["1"] = "public", ["2"] = "Orders" }
+        };
+
+        const string sql = """
+            SELECT result.TABLE_CAT AS "TABLE_CAT", result.TABLE_SCHEM AS "TABLE_SCHEM", result.TABLE_NAME AS "TABLE_NAME", result.COLUMN_NAME AS "COLUMN_NAME", result.KEY_SEQ AS "KEY_SEQ", result.PK_NAME AS "PK_NAME" FROM (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM, ct.relname AS TABLE_NAME, a.attname AS COLUMN_NAME, (information_schema._pg_expandarray(i.indkey)).n AS KEY_SEQ, ci.relname AS PK_NAME, information_schema._pg_expandarray(i.indkey) AS KEYS, a.attnum AS A_ATTNUM, i.indnkeyatts as KEY_COUNT FROM pg_catalog.pg_class ct JOIN pg_catalog.pg_attribute a ON (ct.oid = a.attrelid) JOIN pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid) JOIN pg_catalog.pg_index i ON ( a.attrelid = i.indrelid) JOIN pg_catalog.pg_class ci ON (ci.oid = i.indexrelid) WHERE true AND n.nspname = $1 AND ct.relname = $2 AND i.indisprimary) result where result.A_ATTNUM = (result.KEYS).x AND result.KEY_SEQ <= KEY_COUNT ORDER BY result.table_name, result.pk_name, result.key_seq
+            """;
+
+        Assert.True(PgVirtualInterpreter.TryExecute(sql, ctx, out var table));
+
+        var rows = Rows(table);
+        Assert.Single(rows);
+        Assert.Equal("id", rows[0]["COLUMN_NAME"]);
+        Assert.Equal("Orders", rows[0]["TABLE_NAME"]);
+        Assert.Equal("Orders_pkey", rows[0]["PK_NAME"]);
+        Assert.Equal("1", rows[0]["KEY_SEQ"]);
+    }
+
+    private const string PkConstraintQuery =
+        "SELECT result.TABLE_CAT AS \"TABLE_CAT\", result.TABLE_SCHEM AS \"TABLE_SCHEM\", result.TABLE_NAME AS \"TABLE_NAME\", result.COLUMN_NAME AS \"COLUMN_NAME\", result.KEY_SEQ AS \"KEY_SEQ\", result.PK_NAME AS \"PK_NAME\" FROM (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM, ct.relname AS TABLE_NAME, a.attname AS COLUMN_NAME, (information_schema._pg_expandarray(con.conkey)).n AS KEY_SEQ, con.conname AS PK_NAME, information_schema._pg_expandarray(con.conkey) AS KEYS, a.attnum AS A_ATTNUM FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class ct ON (con.conrelid = ct.oid) JOIN pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid) JOIN pg_catalog.pg_attribute a ON (a.attrelid = ct.oid) WHERE con.contype = 'p' AND n.nspname = $1 AND ct.relname = $2 ) result where result.A_ATTNUM = (result.KEYS).x ORDER BY result.table_name, result.pk_name, result.key_seq";
+
+    [RavenFact(RavenTestCategory.PostgreSql)]
+    public async Task GetPrimaryKeys_pgconstraint_describe_schema_has_columns()
+    {
+        using var store = GetDocumentStore();
+        await Seed(store);
+        var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+        var describeCtx = new VirtualQueryContext { Database = database };
+        Assert.True(PgVirtualInterpreter.TryExecute(PkConstraintQuery, describeCtx, out var describeTable));
+        Assert.Equal(6, describeTable.Columns.Count);
+
+        var executeCtx = new VirtualQueryContext
+        {
+            Database = database,
+            Parameters = new Dictionary<string, object> { ["1"] = "public", ["2"] = "Companies" }
+        };
+        Assert.True(PgVirtualInterpreter.TryExecute(PkConstraintQuery, executeCtx, out var executeTable));
+        var rows = Rows(executeTable);
+        Assert.Single(rows);
+        Assert.Equal("id", rows[0]["COLUMN_NAME"]);
+    }
+
     private static async Task Seed(Raven.Client.Documents.IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();

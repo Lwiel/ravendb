@@ -10,13 +10,18 @@ using Sparrow.Json;
 
 namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
 {
-    internal readonly record struct CollectionRelation(string Name, int Oid);
+    internal readonly record struct CollectionRelation(string Name, int Oid, int PkIndexOid, int PkConstraintOid)
+    {
+        public string PkName => Name + "_pkey";
+    }
 
     internal readonly record struct CollectionColumn(string Name, PgType PgType);
 
     internal static class CollectionCatalog
     {
         private const int FirstCollectionOid = 16384;
+
+        public const short DocumentIdAttNum = 1;
 
         public static List<CollectionRelation> Relations(VirtualQueryContext ctx)
         {
@@ -41,16 +46,25 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
             names.Sort(StringComparer.Ordinal);
 
             var taken = new HashSet<int>();
-            foreach (var name in names)
-            {
-                var oid = OidFor(name);
-                while (taken.Add(oid) == false)
-                    oid = oid == int.MaxValue ? FirstCollectionOid : oid + 1;
+            var relationOids = new int[names.Count];
+            for (var i = 0; i < names.Count; i++)
+                relationOids[i] = Allocate(OidFor(names[i]), taken);
 
-                relations.Add(new CollectionRelation(name, oid));
+            for (var i = 0; i < names.Count; i++)
+            {
+                var pkIndexOid = Allocate(OidFor(names[i] + "/pkey"), taken);
+                var pkConstraintOid = Allocate(OidFor(names[i] + "/pkey-constraint"), taken);
+                relations.Add(new CollectionRelation(names[i], relationOids[i], pkIndexOid, pkConstraintOid));
             }
 
             return relations;
+        }
+
+        private static int Allocate(int oid, HashSet<int> taken)
+        {
+            while (taken.Add(oid) == false)
+                oid = oid == int.MaxValue ? FirstCollectionOid : oid + 1;
+            return oid;
         }
 
         private static int OidFor(string collection)

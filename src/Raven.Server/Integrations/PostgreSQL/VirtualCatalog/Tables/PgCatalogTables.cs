@@ -99,6 +99,7 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
     {
         private const int PublicNamespaceOid = 2200;
         private const string OrdinaryTable = "r";
+        private const string Index = "i";
         private const int NotACompositeType = 0;
 
         private const object NoStorageParameters = null;
@@ -126,6 +127,12 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
                 yield return new object[]
                 {
                     relation.Oid, relation.Name, PublicNamespaceOid, OrdinaryTable, NotACompositeType,
+                    NoStorageParameters, NoAccessMethod
+                };
+
+                yield return new object[]
+                {
+                    relation.PkIndexOid, relation.PkName, PublicNamespaceOid, Index, NotACompositeType,
                     NoStorageParameters, NoAccessMethod
                 };
             }
@@ -193,6 +200,73 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
                         };
                     }
                 }
+            }
+        }
+    }
+
+    internal sealed class PgCatalogPgIndexTable : PgVirtualTable
+    {
+        private static readonly string DocumentIdIndKey = CollectionCatalog.DocumentIdAttNum.ToString();
+        private const string DefaultIndOption = "0";
+
+        public override string SchemaName => "pg_catalog";
+        public override string TableName => "pg_index";
+
+        public override IReadOnlyList<PgVirtualColumn> Columns { get; } = new PgVirtualColumn[]
+        {
+            new("indrelid",     PgOid.Default,  PgFormat.Text),
+            new("indexrelid",   PgOid.Default,  PgFormat.Text),
+            new("indisunique",  PgBool.Default, PgFormat.Text),
+            new("indisprimary", PgBool.Default, PgFormat.Text),
+            new("indexprs",     PgText.Default, PgFormat.Text),
+            new("indpred",      PgText.Default, PgFormat.Text),
+            new("indkey",       PgText.Default, PgFormat.Text),
+            new("indoption",    PgText.Default, PgFormat.Text),
+            new("indnkeyatts",  PgInt2.Default, PgFormat.Text),
+        };
+
+        public override IEnumerable<object[]> EnumerateRows(VirtualQueryContext ctx)
+        {
+            foreach (var relation in CollectionCatalog.Relations(ctx))
+            {
+                yield return new object[]
+                {
+                    relation.Oid, relation.PkIndexOid, true, true, null, null,
+                    DocumentIdIndKey, DefaultIndOption, (short)1
+                };
+            }
+        }
+    }
+
+    internal sealed class PgCatalogPgConstraintTable : PgVirtualTable
+    {
+        private const string PrimaryKey = "p";
+        private static readonly string DocumentIdConKey = "{" + CollectionCatalog.DocumentIdAttNum + "}";
+        private const int NoReferencedRelation = 0;
+
+        public override string SchemaName => "pg_catalog";
+        public override string TableName => "pg_constraint";
+
+        public override IReadOnlyList<PgVirtualColumn> Columns { get; } = new PgVirtualColumn[]
+        {
+            new("oid",       PgOid.Default,  PgFormat.Text),
+            new("conname",   PgName.Default, PgFormat.Text),
+            new("conrelid",  PgOid.Default,  PgFormat.Text),
+            new("contype",   PgChar.Default, PgFormat.Text),
+            new("conkey",    PgText.Default, PgFormat.Text),
+            new("confrelid", PgOid.Default,  PgFormat.Text),
+            new("conindid",  PgOid.Default,  PgFormat.Text),
+        };
+
+        public override IEnumerable<object[]> EnumerateRows(VirtualQueryContext ctx)
+        {
+            foreach (var relation in CollectionCatalog.Relations(ctx))
+            {
+                yield return new object[]
+                {
+                    relation.PkConstraintOid, relation.PkName, relation.Oid, PrimaryKey,
+                    DocumentIdConKey, NoReferencedRelation, relation.PkIndexOid
+                };
             }
         }
     }

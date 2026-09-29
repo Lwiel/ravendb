@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Raven.Server.Integrations.PostgreSQL.Types;
+using Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables;
 
 namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
 {
@@ -90,6 +91,87 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
         {
             result = null;
             return args is { Count: >= 1 and <= 2 };
+        }
+    }
+
+    internal sealed class PgGetConstraintDefFunction : ScalarFunction
+    {
+        public override string Name => "pg_get_constraintdef";
+        public override string ResultColumnName => "pg_get_constraintdef";
+        public override PgType PgType => PgText.Default;
+
+        public override bool TryEvaluate(IReadOnlyList<object> args, VirtualQueryContext ctx, out object result)
+        {
+            result = null;
+            if (args is not { Count: >= 1 and <= 2 })
+                return false;
+
+            if (CatalogOid.TryRead(args[0], out var oid) == false)
+                return args[0] == null;
+
+            foreach (var relation in CollectionCatalog.Relations(ctx))
+            {
+                if (relation.PkConstraintOid == oid)
+                {
+                    result = $"PRIMARY KEY ({PgSyntheticColumns.DocumentId})";
+                    break;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    internal sealed class PgExpandArrayFunction : ScalarFunction
+    {
+        public override string Name => "_pg_expandarray";
+        public override string ResultColumnName => "_pg_expandarray";
+        public override PgType PgType => PgText.Default;
+
+        public override bool TryEvaluate(IReadOnlyList<object> args, VirtualQueryContext ctx, out object result)
+        {
+            result = null;
+            if (args is not { Count: 1 } || PgArrayText.TryGetSingleInteger(args[0], out var element) == false)
+                return false;
+
+            result = new Dictionary<string, object> { ["x"] = element, ["n"] = 1L };
+            return true;
+        }
+    }
+
+    // Set-returning in PG; evaluated only for single-element arrays, where it yields exactly one row.
+    internal sealed class UnnestFunction : ScalarFunction
+    {
+        public override string Name => "unnest";
+        public override string ResultColumnName => "unnest";
+        public override PgType PgType => PgInt4.Default;
+
+        public override bool TryEvaluate(IReadOnlyList<object> args, VirtualQueryContext ctx, out object result)
+        {
+            result = null;
+            if (args is not { Count: 1 } || PgArrayText.TryGetSingleInteger(args[0], out var element) == false)
+                return false;
+
+            result = element;
+            return true;
+        }
+    }
+
+    // Set-returning in PG; evaluated only for single-element arrays, where it yields exactly one row.
+    internal sealed class GenerateSubscriptsFunction : ScalarFunction
+    {
+        public override string Name => "generate_subscripts";
+        public override string ResultColumnName => "generate_subscripts";
+        public override PgType PgType => PgInt4.Default;
+
+        public override bool TryEvaluate(IReadOnlyList<object> args, VirtualQueryContext ctx, out object result)
+        {
+            result = null;
+            if (args is not { Count: 2 } || args[1]?.ToString() != "1" || PgArrayText.TryGetSingleInteger(args[0], out _) == false)
+                return false;
+
+            result = 1L;
+            return true;
         }
     }
 

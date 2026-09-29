@@ -1805,15 +1805,16 @@ ORDER BY ord";
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
-        public void Pg_get_expr_is_not_implemented_and_is_never_reached_over_an_empty_pg_attrdef()
+        public void Pg_get_expr_returns_null_over_an_empty_pg_attrdef()
         {
             Assert.True(PgVirtualInterpreter.TryExecute(
                 "select pg_catalog.pg_get_expr(d.adbin, d.adrelid) from pg_catalog.pg_attrdef d",
                 EmptyCtx(), out var overEmptyTable));
             Assert.Empty(overEmptyTable.Data);
 
-            Assert.False(PgVirtualInterpreter.TryExecute(
-                "select pg_catalog.pg_get_expr(null, null)", EmptyCtx(), out _));
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select pg_catalog.pg_get_expr(null, null)", EmptyCtx(), out var table));
+            Assert.False(table.Data[0].ColumnData.Span[0].HasValue);
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
