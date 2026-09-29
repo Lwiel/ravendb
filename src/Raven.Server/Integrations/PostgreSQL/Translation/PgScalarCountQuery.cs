@@ -17,17 +17,19 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
     // returns). Page size 0 makes the engine drain the whole filtered enumerator and report the exact
     // TotalResults - the same mechanism as IDocumentQueryBase.Count(). The buffered ExecuteQuery path
     // is mandatory: ExecuteStreamQuery never surfaces TotalResults.
+    internal sealed record ScalarCountShape(string[] ColumnNames, bool[] NullWhenNoRows, bool OnlyWhenRowsExist);
+
     internal sealed class PgScalarCountQuery : PgQuery
     {
         private readonly DocumentDatabase _documentDatabase;
-        private readonly string[] _columnNames;
+        private readonly ScalarCountShape _shape;
         private readonly List<PgColumn> _columns = new();
 
-        public PgScalarCountQuery(string rql, int[] parametersDataTypes, DocumentDatabase documentDatabase, string[] columnNames)
+        public PgScalarCountQuery(string rql, int[] parametersDataTypes, DocumentDatabase documentDatabase, ScalarCountShape shape)
             : base(rql, parametersDataTypes)
         {
             _documentDatabase = documentDatabase;
-            _columnNames = columnNames;
+            _shape = shape;
         }
 
         public override Task<ICollection<PgColumn>> Init()
@@ -35,8 +37,8 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             var resultsFormat = GetDefaultResultsFormat();
 
             _columns.Clear();
-            for (int i = 0; i < _columnNames.Length; i++)
-                _columns.Add(new PgColumn(_columnNames[i], (short)i, PgInt8.Default, resultsFormat));
+            for (int i = 0; i < _shape.ColumnNames.Length; i++)
+                _columns.Add(new PgColumn(_shape.ColumnNames[i], (short)i, PgInt8.Default, resultsFormat));
 
             return Task.FromResult<ICollection<PgColumn>>(_columns);
         }
@@ -48,9 +50,15 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
             var count = await GetCount(token);
 
+            if (count == 0 && _shape.OnlyWhenRowsExist)
+            {
+                await writer.WriteAsync(builder.CommandComplete("SELECT 0"), token);
+                return;
+            }
+
             var row = new ReadOnlyMemory<byte>?[_columns.Count];
             for (int i = 0; i < row.Length; i++)
-                row[i] = PgInt8.Default.ToBytes(count, _columns[i].FormatCode);
+                row[i] = count == 0 && _shape.NullWhenNoRows[i] ? (ReadOnlyMemory<byte>?)null : PgInt8.Default.ToBytes(count, _columns[i].FormatCode);
 
             await writer.WriteAsync(builder.DataRow(row), token);
             await writer.WriteAsync(builder.CommandComplete("SELECT 1"), token);

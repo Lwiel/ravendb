@@ -136,10 +136,10 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
         // `SELECT count(*) FROM t [WHERE ...]` is the one scalar aggregate RQL answers exactly: a count
         // query (page size 0) drains the filtered enumerator and reports TotalResults. Kept out of
         // TryParse because its other callers (PowerBI) discard the count shape and must keep rejecting it.
-        public static bool TryParseScalarCount(string sql, DocumentDatabase documentDatabase, out string rql, out string[] columnNames)
+        public static bool TryParseScalarCount(string sql, DocumentDatabase documentDatabase, out string rql, out ScalarCountShape shape)
         {
             rql = null;
-            columnNames = null;
+            shape = null;
 
             try
             {
@@ -150,7 +150,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 if (stmts[0]?.Stmt?.SelectStmt is not { } selectStmt)
                     return false;
 
-                if (TryGetScalarCountColumns(selectStmt, out columnNames) == false)
+                if (TryGetScalarCountShape(selectStmt, out shape) == false)
                     return false;
 
                 rql = TranslateSelectStatement(selectStmt, documentDatabase, asScalarCount: true);
@@ -159,24 +159,26 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             catch (NotSupportedException)
             {
                 rql = null;
-                columnNames = null;
+                shape = null;
                 return false;
             }
         }
 
-        // Only count(*) qualifies: count(x) counts non-null values and count(distinct x) needs dedup,
+        // Only row-counting aggregates qualify: count(x) counts non-null values and count(distinct x) needs dedup,
         // neither of which TotalResults reports. Everything else - other aggregates, a bare column,
         // DISTINCT, GROUP BY - keeps falling through to ScalarAggregateWithoutGroupBy.
-        private static bool TryGetScalarCountColumns(SelectStmt selectStmt, out string[] columnNames)
+        private static bool TryGetScalarCountShape(SelectStmt selectStmt, out ScalarCountShape shape)
         {
-            columnNames = null;
+            shape = null;
 
             if (selectStmt.GroupClause is { Count: > 0 } ||
                 selectStmt.DistinctClause is { Count: > 0 } ||
                 selectStmt.SortClause is { Count: > 0 } ||
-                selectStmt.HavingClause != null ||
                 selectStmt.WithClause != null ||
                 selectStmt.LimitOffset != null)
+                return false;
+
+            if (selectStmt.HavingClause != null && IsRowCountPositiveTest(selectStmt.HavingClause) == false)
                 return false;
 
             // SQL `LIMIT 0` returns no rows at all, which this always-one-row path can't express.
@@ -191,30 +193,48 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 return false;
 
             var names = new string[targets.Count];
+            var nullWhenNoRows = new bool[targets.Count];
             for (int i = 0; i < targets.Count; i++)
             {
                 var resTarget = targets[i]?.ResTarget;
-                if (IsCountStar(resTarget?.Val?.FuncCall) == false)
+                var func = resTarget?.Val?.FuncCall;
+                if (IsRowCount(func) == false)
                     return false;
 
-                names[i] = string.IsNullOrWhiteSpace(resTarget.Name) ? "count" : resTarget.Name;
+                var isSum = IsSumOfOne(func);
+                nullWhenNoRows[i] = isSum;
+                names[i] = string.IsNullOrWhiteSpace(resTarget.Name) ? (isSum ? "sum" : "count") : resTarget.Name;
             }
 
-            columnNames = names;
+            shape = new ScalarCountShape(names, nullWhenNoRows, OnlyWhenRowsExist: selectStmt.HavingClause != null);
             return true;
         }
 
-        private static bool IsCountStar(FuncCall func)
+        private static bool IsRowCount(FuncCall func)
         {
-            if (func == null || func.AggStar == false || func.AggDistinct || func.AggFilter != null || func.Over != null)
-                return false;
-
-            if (func.Args is { Count: > 0 })
+            if (func == null || func.AggDistinct || func.AggFilter != null || func.Over != null)
                 return false;
 
             // Match the last name segment so PowerBI's `pg_catalog.count(*)` is recognized too.
             var name = func.Funcname is { Count: > 0 } ? func.Funcname[^1]?.String?.Sval : null;
-            return string.Equals(name, "count", StringComparison.OrdinalIgnoreCase);
+
+            if (string.Equals(name, "count", StringComparison.OrdinalIgnoreCase))
+            {
+                if (func.AggStar)
+                    return func.Args is not { Count: > 0 };
+
+                return func.Args is [{ AConst: { Isnull: false } }];
+            }
+
+            return string.Equals(name, "sum", StringComparison.OrdinalIgnoreCase) && IsSumOfOne(func);
+        }
+
+        private static bool IsRowCountPositiveTest(Node having)
+        {
+            return having.AExpr is { Kind: A_Expr_Kind.AexprOp, Name: [{ String.Sval: ">" }] } comparison &&
+                   IsRowCount(comparison.Lexpr?.FuncCall) &&
+                   PgSqlAstHelpers.TryReadNonNegativeIntConst(comparison.Rexpr, out var bound) &&
+                   bound == 0;
         }
 
         private static bool LogSuccess(string sql, string rql)
@@ -233,6 +253,8 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
         private static string TranslateSelectStatement(SelectStmt selectStmt, DocumentDatabase documentDatabase = null, bool asScalarCount = false)
         {
+            selectStmt = ResolveOrdinalReferences(selectStmt);
+
             if (selectStmt.FromClause is [{ JoinExpr: not null }])
                 return TranslateSimpleJoin(selectStmt);
 
@@ -301,6 +323,43 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             }
 
             return BuildRql(q);
+        }
+
+        private static SelectStmt ResolveOrdinalReferences(SelectStmt selectStmt)
+        {
+            var hasGroupOrdinal = selectStmt.GroupClause.Any(n => n.AConst?.Ival != null);
+            var hasSortOrdinal = selectStmt.SortClause.Any(n => n.SortBy?.Node?.AConst?.Ival != null);
+            if (hasGroupOrdinal == false && hasSortOrdinal == false)
+                return selectStmt;
+
+            var resolved = selectStmt.Clone();
+
+            for (int i = 0; i < resolved.GroupClause.Count; i++)
+            {
+                if (resolved.GroupClause[i].AConst?.Ival != null)
+                    resolved.GroupClause[i] = TargetAtOrdinal(resolved, resolved.GroupClause[i]);
+            }
+
+            foreach (var sortNode in resolved.SortClause)
+            {
+                if (sortNode.SortBy?.Node?.AConst?.Ival != null)
+                    sortNode.SortBy.Node = TargetAtOrdinal(resolved, sortNode.SortBy.Node);
+            }
+
+            return resolved;
+        }
+
+        private static Node TargetAtOrdinal(SelectStmt selectStmt, Node ordinalNode)
+        {
+            var position = ordinalNode.AConst.Ival.Ival;
+            if (position < 1 || position > selectStmt.TargetList.Count || IsSelectStar(selectStmt.TargetList))
+                throw new NotSupportedException($"Position {position} is not in the select list");
+
+            var val = selectStmt.TargetList[position - 1].ResTarget?.Val;
+            if (val == null)
+                throw new NotSupportedException($"Position {position} is not in the select list");
+
+            return val.Clone();
         }
 
         private static string BuildRql(AsyncDocumentQuery<JObject> q)
@@ -670,15 +729,11 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 return;
             }
 
-            // Aggregate path: only single-column GROUP BY is representable in RQL today.
-            if (groupFieldNames.Count != 1)
-                throw UnsupportedGroupBy();
-
-            var groupFieldName = groupFieldNames[0];
+            var groupKeys = new HashSet<string>(groupFieldNames, StringComparer.OrdinalIgnoreCase);
+            var projectedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             var projections = new List<string>(capacity: targets.Count);
             var aggregates = new List<GroupByAggregate>(capacity: targets.Count);
-            var groupKeyProjected = false;
             foreach (var t in targets)
             {
                 var val = t.ResTarget?.Val;
@@ -687,8 +742,8 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
                 if (val.FuncCall == null)
                 {
-                    projections.Add(BuildProjectionForGroupByTarget(val, groupFieldName, t.ResTarget?.Name, fromAlias));
-                    groupKeyProjected = true;
+                    projections.Add(BuildProjectionForGroupByTarget(val, groupKeys, t.ResTarget?.Name, fromAlias, out var projectedKey));
+                    projectedKeys.Add(projectedKey);
                     continue;
                 }
 
@@ -697,11 +752,11 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 projections.Add(aggregate.Projection);
             }
 
-            q.GroupBy(groupFieldName);
+            q.GroupBy(groupFieldNames[0], groupFieldNames.Skip(1).ToArray());
             q.SelectFields<JObject>(projections.ToArray());
 
             if (selectStmt.SortClause != null && selectStmt.SortClause.Count > 0)
-                TranslateOrderByForGroupBy(q, selectStmt.SortClause, groupFieldName, groupKeyProjected, aggregates, fromAlias);
+                TranslateOrderByForGroupBy(q, selectStmt.SortClause, groupKeys, projectedKeys, aggregates, fromAlias);
         }
 
         // True iff every column referenced by the WHERE predicate is in <paramref name="allowed"/>.
@@ -757,8 +812,8 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
         private static void TranslateOrderByForGroupBy(
             AsyncDocumentQuery<JObject> q,
             Google.Protobuf.Collections.RepeatedField<Node> sortClause,
-            string groupFieldName,
-            bool groupKeyProjected,
+            HashSet<string> groupKeys,
+            HashSet<string> projectedKeys,
             IReadOnlyList<GroupByAggregate> aggregates,
             string fromAlias = null)
         {
@@ -779,26 +834,26 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                     if (string.IsNullOrWhiteSpace(fieldName))
                         throw UnsupportedOrderByForGroupBy();
 
-                    if (string.Equals(fieldName, groupFieldName, StringComparison.OrdinalIgnoreCase))
+                    if (groupKeys.TryGetValue(fieldName, out var groupKey))
                     {
-                        if (groupKeyProjected == false)
+                        if (projectedKeys.Contains(groupKey) == false)
                             throw UnsupportedOrderByForGroupBy();
 
                         // RQL sorts by the reduced field, so the key's SELECT alias is irrelevant here.
-                        orderField = groupFieldName;
+                        orderField = groupKey;
                         ordering = OrderingType.String;
                     }
                     else
                     {
                         var aggregate = FindAggregate(aggregates, a => string.Equals(a.OutputName, fieldName, StringComparison.OrdinalIgnoreCase));
-                        (orderField, ordering) = AggregateOrderTarget(aggregate, groupFieldName);
+                        (orderField, ordering) = AggregateOrderTarget(aggregate, groupKeys);
                     }
                 }
                 else if (sortBy.Node?.FuncCall != null)
                 {
                     var expression = BuildAggregateProjectionForGroupByOrderBy(sortBy.Node.FuncCall, fromAlias);
                     var aggregate = FindAggregate(aggregates, a => string.Equals(a.Expression, expression, StringComparison.OrdinalIgnoreCase));
-                    (orderField, ordering) = AggregateOrderTarget(aggregate, groupFieldName);
+                    (orderField, ordering) = AggregateOrderTarget(aggregate, groupKeys);
                 }
                 else
                 {
@@ -823,11 +878,11 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             throw UnsupportedOrderByForGroupBy();
         }
 
-        private static (string Field, OrderingType Ordering) AggregateOrderTarget(GroupByAggregate aggregate, string groupFieldName)
+        private static (string Field, OrderingType Ordering) AggregateOrderTarget(GroupByAggregate aggregate, HashSet<string> groupKeys)
         {
             // sum(<group key>) and the key itself resolve to the same RQL field name, so `order by`
             // would silently sort by the key instead of the aggregate.
-            if (string.Equals(aggregate.OrderField, groupFieldName, StringComparison.OrdinalIgnoreCase))
+            if (groupKeys.Contains(aggregate.OrderField))
                 throw UnsupportedOrderByForGroupBy();
 
             return (aggregate.OrderField, aggregate.Ordering);
@@ -1141,13 +1196,13 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             return $"{projection} as {EscapeProjectionField(sqlAlias)}";
         }
 
-        private static string BuildProjectionForGroupByTarget(Node val, string groupFieldName, string sqlAlias, string fromAlias = null)
+        private static string BuildProjectionForGroupByTarget(Node val, HashSet<string> groupKeys, string sqlAlias, string fromAlias, out string groupFieldName)
         {
             if (val.ColumnRef == null)
                 throw UnsupportedGroupBy();
 
             var field = ExtractFieldName(val, fromAlias);
-            if (string.Equals(field, groupFieldName, StringComparison.OrdinalIgnoreCase) == false)
+            if (field == null || groupKeys.TryGetValue(field, out groupFieldName) == false)
                 throw UnsupportedGroupBy();
 
             if (IsSafeRqlFieldPath(groupFieldName) == false)
@@ -1190,6 +1245,13 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                     ordering = OrderingType.Long;
                     break;
 
+                case "sum" when IsSumOfOne(funcCall):
+                    RejectUnsupportedAggregateModifiers(funcCall);
+                    expr = "count()";
+                    orderField = Constants.Documents.Indexing.Fields.CountFieldName;
+                    ordering = OrderingType.Long;
+                    break;
+
                 case "sum":
                     expr = BuildSingleColumnAggregateProjection(funcName, funcCall, fromAlias);
                     orderField = ExtractFieldName(GetSingleArgOrThrow(funcCall), fromAlias);
@@ -1227,10 +1289,17 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             return funcName switch
             {
                 "count" => BuildCountProjection(funcCall, fromAlias),
+                "sum" when IsSumOfOne(funcCall) => "count()",
                 "sum" => BuildSingleColumnAggregateProjection(funcName, funcCall, fromAlias),
                 _ => throw UnsupportedOrderByForGroupBy()
             };
         }
+
+        private static bool IsSumOfOne(FuncCall funcCall) =>
+            string.Equals(funcCall.Funcname is { Count: > 0 } ? funcCall.Funcname[^1]?.String?.Sval : null, "sum", StringComparison.OrdinalIgnoreCase) &&
+            funcCall.AggStar == false &&
+            funcCall.Args is [{ AConst.Ival: not null } arg] &&
+            arg.AConst.Ival.Ival == 1;
 
         private static void TranslateWhereClause(AsyncDocumentQuery<JObject> q, Node whereNode, string fromAlias)
         {
