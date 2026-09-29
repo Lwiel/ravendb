@@ -78,28 +78,6 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog.Tables
             new("seqcache",     PgInt8.Default, PgFormat.Text),
             new("seqcycle",     PgBool.Default, PgFormat.Text));
 
-        // RavenDB has no indexes on collections in the PG sense; registered empty so get_pk_constraint() resolves.
-        public static EmptyCatalogTable PgIndex => new("pg_catalog", "pg_index",
-            new("indrelid",     PgOid.Default,  PgFormat.Text),
-            new("indexrelid",   PgOid.Default,  PgFormat.Text),
-            new("indisunique",  PgBool.Default, PgFormat.Text),
-            new("indisprimary", PgBool.Default, PgFormat.Text),
-            new("indexprs",     PgText.Default, PgFormat.Text),
-            new("indpred",      PgText.Default, PgFormat.Text),
-            new("indkey",       PgText.Default, PgFormat.Text),
-            new("indoption",    PgText.Default, PgFormat.Text),
-            new("indnkeyatts",  PgInt2.Default, PgFormat.Text));
-
-        // RavenDB has no constraints of any kind; registered empty so the four constraint reflections resolve.
-        public static EmptyCatalogTable PgConstraint => new("pg_catalog", "pg_constraint",
-            new("oid",       PgOid.Default,  PgFormat.Text),
-            new("conname",   PgName.Default, PgFormat.Text),
-            new("conrelid",  PgOid.Default,  PgFormat.Text),
-            new("contype",   PgChar.Default, PgFormat.Text),
-            new("conkey",    PgText.Default, PgFormat.Text),
-            new("confrelid", PgOid.Default,  PgFormat.Text),
-            new("conindid",  PgOid.Default,  PgFormat.Text));
-
         // Index access methods; RavenDB exposes none, so get_indexes() leaves am.amname NULL.
         public static EmptyCatalogTable PgAm => new("pg_catalog", "pg_am",
             new("oid",    PgOid.Default,  PgFormat.Text),

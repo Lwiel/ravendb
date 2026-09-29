@@ -30,7 +30,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
 
             var ctx = await CtxFor(store);
             Assert.True(PgVirtualInterpreter.TryExecute(
-                "select oid, relname, relkind, relnamespace from pg_class", ctx, out var table));
+                "select oid, relname, relkind, relnamespace from pg_class where relkind = 'r'", ctx, out var table));
 
             Assert.Equal(new[] { "oid", "relname", "relkind", "relnamespace" }, table.Columns.Select(c => c.Name));
             Assert.Equal(3, table.Data.Count);
@@ -52,6 +52,22 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
             }
 
             Assert.Equal(byName.Count, byName.Values.Select(v => v.Oid).Distinct().Count());
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Pg_class_reports_a_primary_key_index_row_per_collection()
+        {
+            using var store = GetDocumentStore();
+            StoreThreeCollections(store);
+
+            var ctx = await CtxFor(store);
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select relname, relnamespace from pg_class where relkind = 'i' order by relname", ctx, out var table));
+
+            Assert.Equal(new[] { "Companies_pkey", "Employees_pkey", "Orders_pkey" },
+                Enumerable.Range(0, table.Data.Count).Select(row => DecodeCell(table, row, column: 0)));
+            Assert.All(Enumerable.Range(0, table.Data.Count),
+                row => Assert.Equal(PublicNamespaceOid.ToString(), DecodeCell(table, row, column: 1)));
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
@@ -559,7 +575,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
                     """;
 
         [RavenFact(RavenTestCategory.PostgreSql)]
-        public async Task Sqlalchemys_get_pk_constraint_statement_resolves_and_reports_no_key_columns()
+        public async Task Sqlalchemys_get_pk_constraint_statement_reports_the_document_id()
         {
             using var store = GetDocumentStore();
             StoreSampleDocuments(store);
@@ -568,12 +584,12 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
             Assert.True(PgVirtualInterpreter.TryExecute(string.Format(PkSql, OidOf(ctx, "Orders")), ctx, out var table));
 
             Assert.Equal(new[] { "attname" }, ColumnNames(table));
-            Assert.Empty(table.Data);
+            Assert.Single(table.Data);
+            Assert.Equal("id", DecodeCell(table, row: 0, column: 0));
         }
 
-        // The subquery's only FROM source is always-empty, so its columns are derived without executing the body.
         [RavenFact(RavenTestCategory.PostgreSql)]
-        public async Task The_set_returning_functions_in_the_subquery_are_not_implemented_and_are_never_reached()
+        public async Task Set_returning_functions_expand_only_single_element_key_arrays()
         {
             using var store = GetDocumentStore();
             StoreSampleDocuments(store);
@@ -592,11 +608,9 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
                      ) k
                  """, ctx, out var subquery));
             Assert.Equal(new[] { "attnum", "ord" }, ColumnNames(subquery));
-            Assert.Empty(subquery.Data);
-
-            Assert.True(PgVirtualInterpreter.TryExecute(
-                $"select attname from pg_attribute where attrelid = {ordersOid}", ctx, out var attributes));
-            Assert.NotEmpty(attributes.Data);
+            Assert.Single(subquery.Data);
+            Assert.Equal("1", DecodeCell(subquery, row: 0, column: 0));
+            Assert.Equal("1", DecodeCell(subquery, row: 0, column: 1));
 
             Assert.False(PgVirtualInterpreter.TryExecute("select unnest('{1,2}')", ctx, out _));
             Assert.False(PgVirtualInterpreter.TryExecute("select generate_subscripts('{1,2}', 1)", ctx, out _));
@@ -662,7 +676,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
                 """;
 
         [RavenFact(RavenTestCategory.PostgreSql)]
-        public async Task Sqlalchemys_get_pk_constraint_names_the_constraint_by_a_statement_that_resolves_to_nothing()
+        public async Task Sqlalchemys_get_pk_constraint_names_the_primary_key_constraint()
         {
             using var store = GetDocumentStore();
             StoreSampleDocuments(store);
@@ -671,7 +685,8 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
             Assert.True(PgVirtualInterpreter.TryExecute(string.Format(PkConsSql, OidOf(ctx, "Orders")), ctx, out var table));
 
             Assert.Equal(new[] { "conname" }, ColumnNames(table));
-            Assert.Empty(table.Data);
+            Assert.Single(table.Data);
+            Assert.Equal("Orders_pkey", DecodeCell(table, row: 0, column: 0));
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
@@ -714,7 +729,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
-        public async Task Pg_get_constraintdef_is_not_implemented_and_is_never_reached()
+        public async Task Pg_get_constraintdef_describes_the_primary_key_constraint()
         {
             using var store = GetDocumentStore();
             StoreSampleDocuments(store);
@@ -722,12 +737,14 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
             var ctx = await CtxFor(store);
 
             Assert.True(PgVirtualInterpreter.TryExecute(
-                "select pg_catalog.pg_get_constraintdef(r.oid, true) from pg_catalog.pg_constraint r",
-                ctx, out var overEmptyTable));
-            Assert.Empty(overEmptyTable.Data);
+                $"select pg_catalog.pg_get_constraintdef(r.oid, true) from pg_catalog.pg_constraint r where r.conrelid = {OidOf(ctx, "Orders")}",
+                ctx, out var table));
+            Assert.Single(table.Data);
+            Assert.Equal("PRIMARY KEY (id)", DecodeCell(table, row: 0, column: 0));
 
-            Assert.False(PgVirtualInterpreter.TryExecute(
-                "select pg_catalog.pg_get_constraintdef(1, true)", ctx, out _));
+            Assert.True(PgVirtualInterpreter.TryExecute(
+                "select pg_catalog.pg_get_constraintdef(1, true)", ctx, out var unknown));
+            Assert.False(unknown.Data[0].ColumnData.Span[0].HasValue);
         }
 
         #endregion

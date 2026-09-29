@@ -33,8 +33,8 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             RegisterTable(new PgCatalogPgAttributeTable());
             RegisterTable(EmptyCatalogTables.PgAttrdef);
             RegisterTable(EmptyCatalogTables.PgSequence);
-            RegisterTable(EmptyCatalogTables.PgIndex);
-            RegisterTable(EmptyCatalogTables.PgConstraint);
+            RegisterTable(new PgCatalogPgIndexTable());
+            RegisterTable(new PgCatalogPgConstraintTable());
             RegisterTable(EmptyCatalogTables.PgAm);
             RegisterTable(new PgCatalogPgNamespaceTable());
             RegisterTable(EmptyCatalogTables.PgExtension);
@@ -65,6 +65,10 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
             RegisterFunction(new ArrayToStringFunction());
             RegisterFunction(new FormatTypeFunction());
             RegisterFunction(new PgGetExprFunction());
+            RegisterFunction(new PgGetConstraintDefFunction());
+            RegisterFunction(new PgExpandArrayFunction());
+            RegisterFunction(new UnnestFunction());
+            RegisterFunction(new GenerateSubscriptsFunction());
         }
 
         public static bool TryGetTable(string schema, string table, out PgVirtualTable virtualTable)
