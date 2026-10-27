@@ -2,9 +2,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 using Raven.Client.Documents.AI;
 using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Conventions;
@@ -348,7 +348,7 @@ public class RunConversationOperation<TSchema> : IMaintenanceOperation<Conversat
                     break;
                 }
 
-                string unescaped = JToken.Parse(line).Value<string>();
+                string unescaped = JsonSerializer.Deserialize<string>(line);
                 await _parent._streamedChunksCallback(unescaped).ConfigureAwait(false);
             }
         }
