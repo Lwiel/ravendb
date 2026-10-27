@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 using Raven.Client.Documents.DataArchival;
 using Raven.Client.Extensions;
 

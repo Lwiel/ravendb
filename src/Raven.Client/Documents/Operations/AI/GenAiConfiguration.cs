@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 using Raven.Client.Documents.Operations.AI.Agents;
 using Raven.Client.Documents.Operations.ETL;
 using Raven.Client.ServerWide;
@@ -99,9 +99,6 @@ public class GenAiConfiguration : AbstractAiIntegrationConfiguration
     /// </summary>
     [JsonDeserializationIgnore]
     [JsonIgnore]
-#if NETCOREAPP3_1_OR_GREATER
-    [System.Text.Json.Serialization.JsonIgnore]
-#endif
     [Obsolete($"{nameof(GenAiConfiguration)} doesn't support multiple transformations. Please use {nameof(GenAiTransformation)} property instead.")]
 #pragma warning disable CS0809 // Obsolete member overrides non-obsolete member
     public override List<Transformation> Transforms

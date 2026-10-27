@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
+using Raven.Client.Documents.Conventions;
 using TypeScripter.Readers;
 
 namespace TypingsGenerator
@@ -17,17 +18,13 @@ namespace TypingsGenerator
 
         public override IEnumerable<FieldInfo> GetFields(TypeInfo type)
         {
-            return base.GetFields(type)
-                .Where(f => f.GetCustomAttribute<JsonIgnoreAttribute>() == null
-                            && f.GetCustomAttribute<Sparrow.Json.JsonDeserializationIgnoreAttribute>() == null
-                            && !IsUnmanagedReference(f.FieldType));
+            return base.GetFields(type).Where(f => IsIgnored(f) == false && !IsUnmanagedReference(f.FieldType));
         }
 
         public override IEnumerable<PropertyInfo> GetProperties(TypeInfo type)
         {
             return base.GetProperties(type).Where(p =>
-                p.GetCustomAttribute<JsonIgnoreAttribute>() == null
-                && p.GetCustomAttribute<Sparrow.Json.JsonDeserializationIgnoreAttribute>() == null
+                IsIgnored(p) == false
                 && !IsDictionaryIndexer(p)
                 && !IsFunctionProperty(p)
                 && !IsUnmanagedReference(p.PropertyType));
@@ -37,6 +34,15 @@ namespace TypingsGenerator
         private static bool IsUnmanagedReference(Type type)
         {
             return type.IsPointer || type.IsByRef;
+        }
+
+        private static bool IsIgnored(MemberInfo member)
+        {
+            if (member.GetCustomAttribute<JsonIgnoreAttribute>() != null || member.GetCustomAttribute<Sparrow.Json.JsonDeserializationIgnoreAttribute>() != null)
+                return true;
+
+            return member.DeclaringType?.Assembly == typeof(DocumentConventions).Assembly
+                   && member.GetCustomAttribute<System.Text.Json.Serialization.JsonIgnoreAttribute>() != null;
         }
 
         private Boolean IsFunctionProperty(PropertyInfo propertyInfo)

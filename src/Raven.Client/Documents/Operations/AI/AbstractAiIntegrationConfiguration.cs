@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+﻿using System.Text.Json.Serialization;
 using Raven.Client.Documents.Operations.ETL;
 using Sparrow.Json;
 

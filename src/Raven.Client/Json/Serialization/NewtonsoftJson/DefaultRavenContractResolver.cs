@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
+using Raven.Client.Documents.Conventions;
 using Raven.Client.Json.Serialization.NewtonsoftJson.Internal.Converters;
 using Sparrow.Extensions;
 using Sparrow.Json;
@@ -219,6 +220,9 @@ namespace Raven.Client.Json.Serialization.NewtonsoftJson
         protected override JsonProperty CreateProperty(MemberInfo member, MemberSerialization memberSerialization)
         {
             var property = base.CreateProperty(member, memberSerialization);
+            if (IsIgnoredClientMember(member))
+                property.Ignored = true;
+
             if (property.Converter == null)
             {
                 var jsonDeserializationDictionaryAttribute = member.GetCustomAttribute<JsonDeserializationStringDictionaryAttribute>();
@@ -227,6 +231,14 @@ namespace Raven.Client.Json.Serialization.NewtonsoftJson
             }
 
             return property;
+        }
+
+        private static bool IsIgnoredClientMember(MemberInfo member)
+        {
+            if (member.DeclaringType?.Assembly != typeof(DocumentConventions).Assembly)
+                return false;
+
+            return member.GetCustomAttribute<System.Text.Json.Serialization.JsonIgnoreAttribute>(inherit: true) is { Condition: System.Text.Json.Serialization.JsonIgnoreCondition.Always };
         }
 
         /// <summary>
