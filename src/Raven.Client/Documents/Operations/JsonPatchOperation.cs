@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using Raven.Client.Documents.Conventions;
 using Raven.Client.Http;
@@ -75,7 +74,7 @@ namespace Raven.Client.Documents.Operations
                         await using (var writer = new AsyncBlittableJsonTextWriter(ctx, stream))
                         {
                             writer.WriteStartObject();
-                            writer.WritePropertyName(nameof(JsonOperation.Operations));
+                            writer.WritePropertyName("Operations");
                             writer.WriteStartArray();
                             var isFirst = true;
                             foreach (BlittableJsonReaderObject operation in _jsonPatchDocument.ToBlittable(_conventions.Serialization, ctx))
@@ -110,10 +109,5 @@ namespace Raven.Client.Documents.Operations
                 Result = JsonDeserializationClient.JsonPatchResult(response);
             }
         }
-    }
-
-    internal sealed class JsonOperation
-    {
-        public List<Microsoft.AspNetCore.JsonPatch.Operations.Operation> Operations { get; set; }
     }
 }
