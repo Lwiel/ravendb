@@ -636,8 +636,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 throw UnsupportedGroupBy();
 
             var groupFieldNames = new List<string>(capacity: selectStmt.GroupClause.Count);
-            foreach (var groupKeyNode in selectStmt.GroupClause)
+            foreach (var groupClauseNode in selectStmt.GroupClause)
             {
+                var groupKeyNode = PgSqlAstHelpers.UnwrapTextCastOfColumn(groupClauseNode);
                 if (groupKeyNode.ColumnRef == null)
                     throw UnsupportedGroupBy();
 
@@ -699,7 +700,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 var projected = new List<string>(targets.Count);
                 foreach (var t in targets)
                 {
-                    var val = t.ResTarget?.Val;
+                    var val = PgSqlAstHelpers.UnwrapTextCastOfColumn(t.ResTarget?.Val);
                     if (val?.ColumnRef == null)
                         throw UnsupportedGroupBy();
 
@@ -736,7 +737,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             var aggregates = new List<GroupByAggregate>(capacity: targets.Count);
             foreach (var t in targets)
             {
-                var val = t.ResTarget?.Val;
+                var val = PgSqlAstHelpers.UnwrapTextCastOfColumn(t.ResTarget?.Val);
                 if (val == null)
                     throw UnsupportedGroupBy();
 
@@ -777,6 +778,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
         {
             if (node == null)
                 return true;
+            node = PgSqlAstHelpers.UnwrapTextCastOfColumn(node);
             if (node.ColumnRef != null)
             {
                 var f = ExtractFieldName(node, fromAlias);
@@ -827,10 +829,11 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
                 string orderField;
                 OrderingType ordering;
+                var sortKey = PgSqlAstHelpers.UnwrapTextCastOfColumn(sortBy.Node);
 
-                if (sortBy.Node?.ColumnRef != null)
+                if (sortKey?.ColumnRef != null)
                 {
-                    var fieldName = ExtractFieldName(sortBy.Node, fromAlias);
+                    var fieldName = ExtractFieldName(sortKey, fromAlias);
                     if (string.IsNullOrWhiteSpace(fieldName))
                         throw UnsupportedOrderByForGroupBy();
 
@@ -849,9 +852,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                         (orderField, ordering) = AggregateOrderTarget(aggregate, groupKeys);
                     }
                 }
-                else if (sortBy.Node?.FuncCall != null)
+                else if (sortKey?.FuncCall != null)
                 {
-                    var expression = BuildAggregateProjectionForGroupByOrderBy(sortBy.Node.FuncCall, fromAlias);
+                    var expression = BuildAggregateProjectionForGroupByOrderBy(sortKey.FuncCall, fromAlias);
                     var aggregate = FindAggregate(aggregates, a => string.Equals(a.Expression, expression, StringComparison.OrdinalIgnoreCase));
                     (orderField, ordering) = AggregateOrderTarget(aggregate, groupKeys);
                 }
@@ -1016,9 +1019,10 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 projectionAliases.Add(EscapeProjectionField(alias));
 
                 string sortableField = null;
-                if (val.ColumnRef != null)
+                var column = PgSqlAstHelpers.UnwrapTextCastOfColumn(val);
+                if (column.ColumnRef != null)
                 {
-                    var raw = ExtractFieldName(val, fromAlias);
+                    var raw = ExtractFieldName(column, fromAlias);
                     if (PgSyntheticColumns.IsDocumentIdColumn(raw) == false)
                         sortableField = raw;
                 }
@@ -1605,7 +1609,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
                 RejectUnsupportedSortModifiers(sortNode);
 
-                var fieldName = ExtractFieldName(sortBy.Node, fromAlias);
+                var fieldName = ExtractFieldName(PgSqlAstHelpers.UnwrapTextCastOfColumn(sortBy.Node), fromAlias);
                 if (string.IsNullOrEmpty(fieldName))
                     throw new NotSupportedException("Unsupported ORDER BY expression (only column sort keys are supported)");
 
@@ -1683,7 +1687,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             {
                 if (sortNode.SortBy?.Node == null)
                     continue;
-                var name = ExtractFieldName(sortNode.SortBy.Node, fromAlias);
+                var name = ExtractFieldName(PgSqlAstHelpers.UnwrapTextCastOfColumn(sortNode.SortBy.Node), fromAlias);
                 if (string.IsNullOrEmpty(name))
                     continue;
                 if (TryResolveOrderByField(name, aliasToField, out var resolved) == false)
