@@ -40,6 +40,15 @@ namespace Raven.Server.Integrations.PostgreSQL
             return null;
         }
 
+        public static Node UnwrapTextCastOfColumn(Node node)
+        {
+            var typeCast = node?.TypeCast;
+            if (typeCast?.Arg?.ColumnRef == null || typeCast.TypeName is not { Typmods.Count: 0, ArrayBounds.Count: 0, Names.Count: > 0 } typeName)
+                return node;
+
+            return typeName.Names[^1].String?.Sval is "text" or "varchar" ? typeCast.Arg : node;
+        }
+
         // Tolerates all three AConst kinds: Ival, Sval, Fval.
         public static bool TryReadNonNegativeIntConst(Node node, out int value)
         {

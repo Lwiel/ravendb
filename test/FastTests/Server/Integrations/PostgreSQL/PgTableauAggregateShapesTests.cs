@@ -52,6 +52,47 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.Equal(Translate(sql), Translate(sql));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData(
+            "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 ORDER BY 2 DESC LIMIT 10",
+            "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 ORDER BY 2 DESC LIMIT 10")]
+        [InlineData(
+            "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", CAST(\"Orders\".\"ShipVia\" AS TEXT) AS \"ShipVia\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1, 2 ORDER BY 1 ASC",
+            "SELECT \"Orders\".\"Company\" AS \"Company\", \"Orders\".\"ShipVia\" AS \"ShipVia\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1, 2 ORDER BY 1 ASC")]
+        [InlineData(
+            "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 ORDER BY 1 ASC",
+            "SELECT \"Orders\".\"Company\" AS \"Company\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 ORDER BY 1 ASC")]
+        [InlineData(
+            "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" WHERE (CAST(\"Orders\".\"Company\" AS TEXT) IN ('Alpha', 'Beta')) GROUP BY 1",
+            "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" WHERE (\"Orders\".\"Company\" IN ('Alpha', 'Beta')) GROUP BY 1")]
+        [InlineData(
+            "SELECT \"Orders\".\"Company\"::varchar AS \"Company\", COUNT(1) AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY \"Orders\".\"Company\"::varchar",
+            "SELECT \"Orders\".\"Company\" AS \"Company\", COUNT(1) AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY \"Orders\".\"Company\"")]
+        [InlineData(
+            "SELECT CAST(\"Company\" AS TEXT) AS \"Company\", \"Freight\" FROM \"public\".\"Orders\" WHERE (CAST(\"Company\" AS TEXT) = 'Alpha') ORDER BY 1",
+            "SELECT \"Company\" AS \"Company\", \"Freight\" FROM \"public\".\"Orders\" WHERE (\"Company\" = 'Alpha') ORDER BY 1")]
+        public void Text_cast_of_a_column_translates_like_the_bare_column(string castSql, string bareSql)
+        {
+            Assert.Equal(Translate(bareSql), Translate(castSql));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT CAST(\"Orders\".\"OrderedAt\" AS DATE) AS \"OrderedAt\", SUM(\"Orders\".\"Freight\") FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1")]
+        [InlineData("SELECT CAST(\"Orders\".\"Company\" AS VARCHAR(3)) AS \"Company\", SUM(\"Orders\".\"Freight\") FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1")]
+        [InlineData("SELECT CAST(\"Orders\".\"Freight\" AS INTEGER) AS \"Freight\", COUNT(1) FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1")]
+        public void Group_key_cast_that_can_merge_values_does_not_translate(string sql)
+        {
+            Assert.False(PgSqlToRqlTranslator.TryParse(sql, Array.Empty<int>(), out _));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void Text_cast_filter_on_a_non_grouped_field_does_not_translate()
+        {
+            Assert.False(PgSqlToRqlTranslator.TryParse(
+                "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", SUM(\"Orders\".\"Freight\") FROM \"public\".\"Orders\" \"Orders\" WHERE (CAST(\"Orders\".\"ShipVia\" AS TEXT) = 'Air') GROUP BY 1",
+                Array.Empty<int>(), out _));
+        }
+
         [RavenFact(RavenTestCategory.PostgreSql, LicenseRequired = true)]
         public async Task Sum_by_ordinal_group_returns_one_row_per_key()
         {
@@ -115,6 +156,22 @@ namespace FastTests.Server.Integrations.PostgreSQL
                 store, database);
 
             Assert.Equal(new[] { ("Alpha", "Sea"), ("Gamma", "Sea"), ("Alpha", "Air"), ("Beta", "Air") }, rows.Select(r => (r[0], r[1])));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        public async Task Text_cast_dimension_filtered_on_the_group_key_returns_the_filtered_sums()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (columns, rows) = await RunWarm(
+                "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"sum:Freight:ok\" FROM \"public\".\"Orders\" \"Orders\" WHERE (CAST(\"Orders\".\"Company\" AS TEXT) IN ('Alpha', 'Gamma')) GROUP BY 1 ORDER BY 2 DESC",
+                store, database);
+
+            Assert.Equal(new[] { "Company", "sum:Freight:ok" }, columns);
+            Assert.Equal(new[] { "Alpha", "Gamma" }, rows.Select(r => r[0]));
+            Assert.Equal(new Dictionary<string, double> { ["Alpha"] = 30, ["Gamma"] = 4 }, ToSums(rows));
         }
 
         [RavenFact(RavenTestCategory.PostgreSql, LicenseRequired = true)]

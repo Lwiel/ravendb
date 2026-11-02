@@ -296,7 +296,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
         private static bool TryExtractFieldPath(Node node, string outerAliasToStrip, out IReadOnlyList<string> path)
         {
             path = null;
-            var fields = node?.ColumnRef?.Fields;
+            var fields = PgSqlAstHelpers.UnwrapTextCastOfColumn(node)?.ColumnRef?.Fields;
             if (fields == null || fields.Count == 0)
                 return false;
 
