@@ -334,7 +334,7 @@ namespace Raven.Server.Web.System
             {
                 // proxy the command to the leader
                 var leaderRequestExecutor = ServerStore.GetLeaderRequestExecutor(leaderTag);
-                var command = new CreateDatabaseOperation.CreateDatabaseCommand(DocumentConventions.Default, databaseRecord, replicationFactor, index);
+                var command = new CreateDatabaseOperation.CreateDatabaseCommand(DocumentConventions.DefaultForServer, databaseRecord, replicationFactor, index);
                 await leaderRequestExecutor.ExecuteAsync(command, context);
                 HttpContext.Response.StatusCode = (int)HttpStatusCode.Created;
 
@@ -1399,7 +1399,7 @@ namespace Raven.Server.Web.System
                 nodesUrls = ServerStore.GetClusterTopology(context).AllNodes.Values.ToArray();
             }
 
-            using (var requestExecutor = RequestExecutor.CreateForServer(nodesUrls, database, Server.Certificate.ClientCertificate, DocumentConventions.Default))
+            using (var requestExecutor = RequestExecutor.CreateForServer(nodesUrls, database, Server.Certificate.ClientCertificate, DocumentConventions.DefaultForServer))
             using (requestExecutor.ContextPool.AllocateOperationContext(out var context))
             {
                 var cmd = new ValidateUnusedIdsCommand(
