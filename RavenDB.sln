@@ -113,6 +113,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "HighCardinalityFacets.Bench
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zstd.Benchmark", "bench\Zstd.Benchmark\Zstd.Benchmark.csproj", "{2A116229-90C8-4D3D-BFAD-BCD150EEA668}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Raven.Client.NewtonsoftJson", "src\Raven.Client.NewtonsoftJson\Raven.Client.NewtonsoftJson.csproj", "{8BA43B56-3350-4771-B382-22E3F502ED3D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -951,6 +953,24 @@ Global
 		{2A116229-90C8-4D3D-BFAD-BCD150EEA668}.Validate|x64.Build.0 = Debug|Any CPU
 		{2A116229-90C8-4D3D-BFAD-BCD150EEA668}.Validate|x86.ActiveCfg = Debug|Any CPU
 		{2A116229-90C8-4D3D-BFAD-BCD150EEA668}.Validate|x86.Build.0 = Debug|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Debug|x64.Build.0 = Debug|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Debug|x86.Build.0 = Debug|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Release|x64.ActiveCfg = Release|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Release|x64.Build.0 = Release|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Release|x86.ActiveCfg = Release|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Release|x86.Build.0 = Release|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Validate|Any CPU.ActiveCfg = Validate|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Validate|Any CPU.Build.0 = Validate|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Validate|x64.ActiveCfg = Validate|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Validate|x64.Build.0 = Validate|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Validate|x86.ActiveCfg = Validate|Any CPU
+		{8BA43B56-3350-4771-B382-22E3F502ED3D}.Validate|x86.Build.0 = Validate|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1002,6 +1022,7 @@ Global
 		{A6DE1C1B-38F0-4E2D-9D6C-5B1D2E8F4A07} = {C3388268-F662-4D76-A25D-FC4F31CE6AA1}
 		{3C9E1F27-6B4D-4A8E-9F21-7D5B2C8E4A16} = {C3388268-F662-4D76-A25D-FC4F31CE6AA1}
 		{2A116229-90C8-4D3D-BFAD-BCD150EEA668} = {C3388268-F662-4D76-A25D-FC4F31CE6AA1}
+		{8BA43B56-3350-4771-B382-22E3F502ED3D} = {02838C57-DE0E-465D-9FBB-248DA87BEAAE}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {032D6274-16A5-43ED-920F-D37BBD4B9628}
