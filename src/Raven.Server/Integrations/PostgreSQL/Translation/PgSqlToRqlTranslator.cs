@@ -454,7 +454,13 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             if (value is int or long or short or byte or uint or ulong or ushort or sbyte)
                 return Convert.ToString(value, CultureInfo.InvariantCulture);
 
-            if (value is float or double or decimal)
+            if (value is float or double)
+            {
+                var text = Convert.ToString(value, CultureInfo.InvariantCulture);
+                return text.AsSpan().ContainsAnyExcept("-0123456789") ? text : text + ".0";
+            }
+
+            if (value is decimal)
                 return Convert.ToString(value, CultureInfo.InvariantCulture);
 
             if (value is DateTime dt)
@@ -650,12 +656,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             }
 
             // RavenDB applies a group-by query's WHERE to the REDUCED result (post-aggregation), not
-            // the source rows. SQL HAVING is also post-aggregation but the bridge doesn't translate it.
-            // Both would silently corrupt the aggregates, so reject them — except a WHERE that touches
-            // only GROUP BY keys, which is equivalent whether applied before or after grouping.
-            if (selectStmt.HavingClause != null)
-                throw UnsupportedGroupByHaving();
-
+            // the source rows, so a WHERE is only safe when it touches GROUP BY keys alone.
             if (selectStmt.WhereClause != null)
             {
                 var keySet = new HashSet<string>(groupFieldNames, StringComparer.OrdinalIgnoreCase);
@@ -696,6 +697,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             // a group, and projecting the group keys gives back exactly the distinct tuples.
             if (hasAnyAggregate == false)
             {
+                if (selectStmt.HavingClause != null)
+                    throw UnsupportedGroupByHaving();
+
                 var groupSet = new HashSet<string>(groupFieldNames, StringComparer.OrdinalIgnoreCase);
                 var projected = new List<string>(targets.Count);
                 foreach (var t in targets)
@@ -756,9 +760,106 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             q.GroupBy(groupFieldNames[0], groupFieldNames.Skip(1).ToArray());
             q.SelectFields<JObject>(projections.ToArray());
 
+            if (selectStmt.HavingClause != null)
+                TranslateHavingClause(q, selectStmt.HavingClause, groupKeys, aggregates, fromAlias);
+
             if (selectStmt.SortClause != null && selectStmt.SortClause.Count > 0)
                 TranslateOrderByForGroupBy(q, selectStmt.SortClause, groupKeys, projectedKeys, aggregates, fromAlias);
         }
+
+        private static void TranslateHavingClause(
+            AsyncDocumentQuery<JObject> q,
+            Node having,
+            HashSet<string> groupKeys,
+            IReadOnlyList<GroupByAggregate> aggregates,
+            string fromAlias)
+        {
+            var sumFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var rewritten = RewriteHavingOperands(having.Clone(), groupKeys, aggregates, sumFields, fromAlias);
+
+            if (SqlWhereParser.TryParse(rewritten, fromAlias, out var parsed) == false || TryFoldConstant(parsed) != null)
+                throw UnsupportedGroupByHaving();
+
+            q.AndAlso(wrapPreviousQueryClauses: true);
+            EmitWhere(q, PromoteSumBounds(SimplifyConstants(parsed), sumFields), wrapInSubclause: true);
+        }
+
+        private static Node RewriteHavingOperands(
+            Node node,
+            HashSet<string> groupKeys,
+            IReadOnlyList<GroupByAggregate> aggregates,
+            HashSet<string> sumFields,
+            string fromAlias)
+        {
+            if (node?.BoolExpr is { } boolExpr)
+            {
+                for (int i = 0; i < boolExpr.Args.Count; i++)
+                    boolExpr.Args[i] = RewriteHavingOperands(boolExpr.Args[i], groupKeys, aggregates, sumFields, fromAlias);
+            }
+            else if (node?.AExpr is { } aExpr)
+            {
+                aExpr.Lexpr = RewriteHavingOperand(aExpr.Lexpr, groupKeys, aggregates, sumFields, fromAlias);
+            }
+            else if (node?.NullTest != null)
+            {
+                throw UnsupportedGroupByHaving();
+            }
+
+            return node;
+        }
+
+        private static Node RewriteHavingOperand(
+            Node operand,
+            HashSet<string> groupKeys,
+            IReadOnlyList<GroupByAggregate> aggregates,
+            HashSet<string> sumFields,
+            string fromAlias)
+        {
+            var column = PgSqlAstHelpers.UnwrapTextCastOfColumn(operand);
+            if (column?.ColumnRef != null)
+            {
+                if (groupKeys.Contains(ExtractFieldName(column, fromAlias) ?? string.Empty) == false)
+                    throw UnsupportedGroupByHaving();
+                return operand;
+            }
+
+            if (operand?.FuncCall is not { } funcCall)
+                return operand;
+
+            if (GetFuncNameOrThrow(funcCall) is not ("count" or "sum"))
+                throw UnsupportedGroupByHaving();
+
+            var expression = BuildAggregateProjectionForGroupByOrderBy(funcCall, fromAlias);
+            if (TryFindAggregate(aggregates, a => string.Equals(a.Expression, expression, StringComparison.OrdinalIgnoreCase), out var aggregate) == false ||
+                groupKeys.Contains(aggregate.OrderField) ||
+                aggregate.OrderField.Contains('.'))
+                throw UnsupportedGroupByHaving();
+
+            if (aggregate.Ordering == OrderingType.Double)
+                sumFields.Add(aggregate.OrderField);
+
+            return new Node { ColumnRef = new ColumnRef { Fields = { new Node { String = new PgSqlParser.String { Sval = aggregate.OrderField } } } } };
+        }
+
+        private static ParsedWhere PromoteSumBounds(ParsedWhere parsed, HashSet<string> sumFields)
+        {
+            return parsed switch
+            {
+                ParsedAnd a => new ParsedAnd(a.Children.Select(c => PromoteSumBounds(c, sumFields)).ToList()),
+                ParsedOr o => new ParsedOr(o.Children.Select(c => PromoteSumBounds(c, sumFields)).ToList()),
+                ParsedNot n => new ParsedNot(PromoteSumBounds(n.Child, sumFields)),
+                ParsedBinary b when IsSumField(b.FieldPath) => b with { Value = PromoteToDouble(b.Value) },
+                ParsedIn i when IsSumField(i.FieldPath) => i with { Values = i.Values.Select(PromoteToDouble).ToList() },
+                ParsedBetween bt when IsSumField(bt.FieldPath) => bt with { Lower = PromoteToDouble(bt.Lower), Upper = PromoteToDouble(bt.Upper) },
+                ParsedLike => throw UnsupportedGroupByHaving(),
+                _ => parsed
+            };
+
+            bool IsSumField(IReadOnlyList<string> path) => path.Count == 1 && sumFields.Contains(path[0]);
+        }
+
+        private static ParsedValue PromoteToDouble(ParsedValue value) =>
+            value.Kind == ParsedValueKind.Long ? new ParsedValue((double)(long)value.Raw, ParsedValueKind.Double) : value;
 
         // True iff every column referenced by the WHERE predicate is in <paramref name="allowed"/>.
         // Returns false on any predicate shape we can't confidently decompose, so the caller rejects
@@ -872,13 +973,25 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
         private static GroupByAggregate FindAggregate(IReadOnlyList<GroupByAggregate> aggregates, Func<GroupByAggregate, bool> predicate)
         {
+            if (TryFindAggregate(aggregates, predicate, out var aggregate))
+                return aggregate;
+
+            throw UnsupportedOrderByForGroupBy();
+        }
+
+        private static bool TryFindAggregate(IReadOnlyList<GroupByAggregate> aggregates, Func<GroupByAggregate, bool> predicate, out GroupByAggregate aggregate)
+        {
             for (int i = 0; i < aggregates.Count; i++)
             {
                 if (predicate(aggregates[i]))
-                    return aggregates[i];
+                {
+                    aggregate = aggregates[i];
+                    return true;
+                }
             }
 
-            throw UnsupportedOrderByForGroupBy();
+            aggregate = default;
+            return false;
         }
 
         private static (string Field, OrderingType Ordering) AggregateOrderTarget(GroupByAggregate aggregate, HashSet<string> groupKeys)
