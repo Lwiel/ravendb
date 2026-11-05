@@ -118,7 +118,7 @@ namespace Raven.Server.Integrations.PostgreSQL
 
             if (outer.HavingClause != null)
             {
-                message = "SQL HAVING is not supported. RavenDB filters aggregated groups with a post-reduction predicate the bridge doesn't translate yet — fetch the grouped rows without HAVING and apply the threshold client-side.";
+                message = "HAVING translates to RavenDB's post-reduction group filter, which compares the count(*) and sum(<column>) aggregates listed in the SELECT clause, and the GROUP BY keys, using =, <>, <, <=, >, >=, IN and BETWEEN. Add the aggregate you filter on to the SELECT list and express the condition in that form, or run the query as RQL.";
                 return true;
             }
 

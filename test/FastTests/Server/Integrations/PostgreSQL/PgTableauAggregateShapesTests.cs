@@ -246,6 +246,113 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.Throws<PgErrorException>(() => PgQuery.CreateInstance(sql, Array.Empty<int>(), database, session: null));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData(
+            "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING (SUM(\"Orders\".\"Freight\") > 10)",
+            "from 'Orders' group by Company where (Freight > 10.0) select Company, sum(Freight) as a0")]
+        [InlineData(
+            "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING ((SUM(\"Orders\".\"Freight\") >= 5) AND (SUM(\"Orders\".\"Freight\") <= 30.5))",
+            "from 'Orders' group by Company where (Freight >= 5.0 and Freight <= 30.5) select Company, sum(Freight) as a0")]
+        [InlineData(
+            "SELECT \"Orders\".\"Company\" AS \"Company\", COUNT(1) AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING (COUNT(1) > 2)",
+            "from 'Orders' group by Company where (Count > 2) select Company, count() as a0")]
+        [InlineData(
+            "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(1) AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING (COUNT(*) BETWEEN 2 AND 9)",
+            "from 'Orders' group by Company where (Count between 2 and 9) select Company, count() as a0")]
+        [InlineData(
+            "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" WHERE (\"Orders\".\"Company\" = 'Gamma' OR \"Orders\".\"Company\" = 'Alpha') GROUP BY 1 HAVING (SUM(\"Orders\".\"Freight\") > 5)",
+            "from 'Orders' group by Company where (Company = 'Gamma' or Company = 'Alpha') and (Freight > 5.0) select Company, sum(Freight) as a0")]
+        public void Having_on_a_selected_aggregate_filters_the_reduced_groups(string sql, string expectedRql)
+        {
+            Assert.Equal(expectedRql, Translate(sql));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT \"Company\", SUM(\"Freight\") FROM \"public\".\"Orders\" GROUP BY 1 HAVING (COUNT(1) > 5)")]
+        [InlineData("SELECT \"Company\", SUM(\"Freight\") FROM \"public\".\"Orders\" GROUP BY 1 HAVING (AVG(\"Freight\") > 5)")]
+        [InlineData("SELECT \"Company\", SUM(\"Freight\") FROM \"public\".\"Orders\" GROUP BY 1 HAVING (SUM(\"Freight\") IS NULL)")]
+        [InlineData("SELECT \"Company\", SUM(\"Freight\") FROM \"public\".\"Orders\" GROUP BY 1 HAVING (\"ShipVia\" = 'Air')")]
+        [InlineData("SELECT \"Company\", COUNT(1) FROM \"public\".\"Orders\" GROUP BY 1 HAVING (COUNT(\"Freight\") > 5)")]
+        [InlineData("SELECT \"Freight\", SUM(\"Freight\") FROM \"public\".\"Orders\" GROUP BY 1 HAVING (SUM(\"Freight\") > 5)")]
+        [InlineData("SELECT \"Company\" FROM \"public\".\"Orders\" GROUP BY 1 HAVING (COUNT(1) > 5)")]
+        public void Having_outside_the_selected_count_and_sum_does_not_translate(string sql)
+        {
+            Assert.False(PgSqlToRqlTranslator.TryParse(sql, Array.Empty<int>(), out _));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Having_on_an_unselected_aggregate_explains_the_selected_aggregate_rule()
+        {
+            using var store = GetDocumentStore();
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var error = Assert.Throws<PgErrorException>(() => PgQuery.CreateInstance(
+                "SELECT \"Company\", SUM(\"Freight\") FROM \"public\".\"Orders\" GROUP BY 1 HAVING (COUNT(1) > 5)", Array.Empty<int>(), database, session: null));
+            Assert.Contains("SELECT list", error.Message);
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        public async Task Having_range_on_a_sum_keeps_the_groups_inside_the_range()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(
+                "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"sum:Freight:ok\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING ((SUM(\"Orders\".\"Freight\") >= 5) AND (SUM(\"Orders\".\"Freight\") <= 30))",
+                store, database);
+
+            Assert.Equal(new Dictionary<string, double> { ["Alpha"] = 30, ["Beta"] = 9 }, ToSums(rows));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        public async Task Having_on_a_count_keeps_the_groups_with_more_rows()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(
+                "SELECT \"Orders\".\"Company\" AS \"Company\", COUNT(1) AS \"cnt\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING (COUNT(1) > 2) ORDER BY 2 DESC",
+                store, database);
+
+            Assert.Equal(new[] { ("Alpha", "10"), ("Beta", "9") }, rows.Select(r => (r[0], r[1])));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        public async Task Having_with_an_integer_bound_compares_a_fractional_sum_exactly()
+        {
+            using var store = GetDocumentStore();
+            using (var session = store.OpenAsyncSession())
+            {
+                await session.StoreAsync(new Order { Company = "Delta", Freight = 5.25 });
+                await session.StoreAsync(new Order { Company = "Delta", Freight = 5.25 });
+                await session.StoreAsync(new Order { Company = "Echo", Freight = 10 });
+                await session.SaveChangesAsync();
+            }
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(
+                "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING (SUM(\"Orders\".\"Freight\") > 10)",
+                store, database);
+
+            Assert.Equal(new Dictionary<string, double> { ["Delta"] = 10.5 }, ToSums(rows));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        public async Task Having_combined_with_an_or_filter_on_the_group_key_applies_both()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(
+                "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" WHERE (\"Orders\".\"Company\" = 'Gamma' OR \"Orders\".\"Company\" = 'Alpha') GROUP BY 1 HAVING (SUM(\"Orders\".\"Freight\") > 5)",
+                store, database);
+
+            Assert.Equal(new Dictionary<string, double> { ["Alpha"] = 30 }, ToSums(rows));
+        }
+
         private static string Translate(string sql)
         {
             Assert.True(PgSqlToRqlTranslator.TryParse(sql, Array.Empty<int>(), out var rql));
