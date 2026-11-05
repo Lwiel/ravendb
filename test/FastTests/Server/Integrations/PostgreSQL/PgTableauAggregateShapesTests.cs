@@ -8,6 +8,7 @@ using Raven.Client.Documents;
 using Raven.Server.Documents;
 using Raven.Server.Integrations.PostgreSQL;
 using Raven.Server.Integrations.PostgreSQL.Exceptions;
+using Raven.Server.Integrations.PostgreSQL.Messages;
 using Raven.Server.Integrations.PostgreSQL.Translation;
 using Tests.Infrastructure;
 using Xunit;
@@ -230,6 +231,45 @@ namespace FastTests.Server.Integrations.PostgreSQL
 
             var cell = Assert.Single(Assert.Single(rows));
             Assert.Equal(21L, BinaryPrimitives.ReadInt64BigEndian(cell));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Row_count_bound_per_column_before_describe_is_sent_in_the_binary_format()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            using var query = PgQuery.CreateInstance("SELECT COUNT(1) AS \"cnt\" FROM \"public\".\"Orders\" \"Orders\"", Array.Empty<int>(), database, session: null);
+            query.Bind(Array.Empty<byte[]>(), Array.Empty<short>(), new short[] { 1 });
+
+            var rows = ParseDataRowCells(await ExecuteToWireAsync(query, TestContext.Current.CancellationToken));
+
+            var cell = Assert.Single(Assert.Single(rows));
+            Assert.Equal(21L, BinaryPrimitives.ReadInt64BigEndian(cell));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Projection_bound_per_column_before_describe_mixes_binary_and_text_cells()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            using var query = PgQuery.CreateInstance("SELECT \"Freight\", \"Company\" FROM \"public\".\"Orders\" WHERE \"Company\" = 'Gamma'", Array.Empty<int>(), database, session: null);
+            query.Bind(Array.Empty<byte[]>(), Array.Empty<short>(), new short[] { 1, 0 });
+            var columns = await query.Init();
+
+            Assert.Equal(new[] { PgFormat.Binary, PgFormat.Text }, columns.Select(c => c.FormatCode));
+
+            var rows = ParseDataRowCells(await ExecuteToWireAsync(query, TestContext.Current.CancellationToken));
+
+            Assert.Equal(2, rows.Count);
+            Assert.All(rows, cells =>
+            {
+                Assert.Equal(2.0, BinaryPrimitives.ReadDoubleBigEndian(cells[0]));
+                Assert.Equal("Gamma", System.Text.Encoding.UTF8.GetString(cells[1]));
+            });
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]

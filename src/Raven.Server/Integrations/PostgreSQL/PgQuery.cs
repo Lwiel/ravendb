@@ -97,18 +97,6 @@ namespace Raven.Server.Integrations.PostgreSQL
             }
         }
 
-        protected PgFormat GetDefaultResultsFormat()
-        {
-            return _resultColumnFormatCodes.Length switch
-            {
-                0 => PgFormat.Text,
-                1 => _resultColumnFormatCodes[0] == 0 ? PgFormat.Text : PgFormat.Binary,
-                _ => throw new NotSupportedException(
-                    "No support for column format code count that isn't 0 or 1, got: " +
-                    _resultColumnFormatCodes.Length)
-            };
-        }
-
         public abstract Task<ICollection<PgColumn>> Init();
 
         public abstract Task Execute(MessageBuilder builder, PipeWriter writer, CancellationToken token);
@@ -149,14 +137,14 @@ namespace Raven.Server.Integrations.PostgreSQL
             // a client that requests binary results - pgJDBC once a statement is server-side prepared -
             // decodes our text-encoded values as binary and crashes (e.g. a 2-byte "42" read as int8).
             foreach (var column in ResultColumns)
-                column.FormatCode = ResolveResultColumnFormat(column.ColumnIndex);
+                column.FormatCode = GetResultsFormat(column.ColumnIndex);
         }
 
         protected virtual IEnumerable<PgColumn> ResultColumns => Columns.Values;
 
         // Result column format per the Bind message: 0 codes => all text; 1 code => applies to every
         // column; N codes => one per column, by position.
-        private PgFormat ResolveResultColumnFormat(short columnIndex)
+        protected PgFormat GetResultsFormat(short columnIndex)
         {
             return _resultColumnFormatCodes.Length switch
             {

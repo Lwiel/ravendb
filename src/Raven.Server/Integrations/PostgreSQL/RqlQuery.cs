@@ -140,10 +140,8 @@ namespace Raven.Server.Integrations.PostgreSQL
                     return Array.Empty<PgColumn>();
             }
 
-            var resultsFormat = GetDefaultResultsFormat();
-
             if (IncludeDocumentIdColumn && _samples[0].Id != null)
-                Columns[PgSyntheticColumns.DocumentId] = new PgColumn(PgSyntheticColumns.DocumentId, (short)Columns.Count, PgText.Default, resultsFormat);
+                Columns[PgSyntheticColumns.DocumentId] = new PgColumn(PgSyntheticColumns.DocumentId, (short)Columns.Count, PgText.Default, GetResultsFormat((short)Columns.Count));
 
             BlittableJsonReaderObject.PropertyDetails prop = default;
 
@@ -168,7 +166,7 @@ namespace Raven.Server.Integrations.PostgreSQL
                     continue;
                 }
 
-                Columns.TryAdd(property, new PgColumn(property, (short)Columns.Count, PgJson.Default, resultsFormat));
+                Columns.TryAdd(property, new PgColumn(property, (short)Columns.Count, PgJson.Default, GetResultsFormat((short)Columns.Count)));
             }
 
             // Go through results - we'll try to find all properties types.
@@ -227,7 +225,7 @@ namespace Raven.Server.Integrations.PostgreSQL
                     }
 
                     uncheckedTypePropertiesNames.Remove(propertyName);
-                    Columns[propertyName] = new PgColumn(propertyName, Columns[propertyName].ColumnIndex, pgType, resultsFormat);
+                    Columns[propertyName] = new PgColumn(propertyName, Columns[propertyName].ColumnIndex, pgType, GetResultsFormat(Columns[propertyName].ColumnIndex));
                 }
 
                 // If we're finished, break
@@ -243,7 +241,7 @@ namespace Raven.Server.Integrations.PostgreSQL
                 }
                 else
                 {
-                    Columns[PgSyntheticColumns.Json] = new PgColumn(PgSyntheticColumns.Json, (short)Columns.Count, PgJson.Default, resultsFormat);
+                    Columns[PgSyntheticColumns.Json] = new PgColumn(PgSyntheticColumns.Json, (short)Columns.Count, PgJson.Default, GetResultsFormat((short)Columns.Count));
                 }
             }
 

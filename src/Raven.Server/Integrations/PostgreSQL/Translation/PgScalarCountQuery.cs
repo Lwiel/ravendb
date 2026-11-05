@@ -34,11 +34,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
         public override Task<ICollection<PgColumn>> Init()
         {
-            var resultsFormat = GetDefaultResultsFormat();
-
             _columns.Clear();
             for (int i = 0; i < _shape.ColumnNames.Length; i++)
-                _columns.Add(new PgColumn(_shape.ColumnNames[i], (short)i, PgInt8.Default, resultsFormat));
+                _columns.Add(new PgColumn(_shape.ColumnNames[i], (short)i, PgInt8.Default, GetResultsFormat((short)i)));
 
             return Task.FromResult<ICollection<PgColumn>>(_columns);
         }

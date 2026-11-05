@@ -35,7 +35,7 @@ namespace Raven.Server.Integrations.PostgreSQL.PowerBI
                         continue;
                     if (Columns.ContainsKey(cp.ColumnName))
                         continue;
-                    Columns[cp.ColumnName] = new PgColumn(cp.ColumnName, (short)Columns.Count, cp.PgType, GetDefaultResultsFormat());
+                    Columns[cp.ColumnName] = new PgColumn(cp.ColumnName, (short)Columns.Count, cp.PgType, GetResultsFormat((short)Columns.Count));
                 }
             }
 
