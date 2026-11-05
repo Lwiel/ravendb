@@ -85,6 +85,17 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.False(PgSqlToRqlTranslator.TryParse(sql, Array.Empty<int>(), out _));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT CAST(\"Orders\".\"Freight\" AS INTEGER) AS \"Freight\" FROM \"public\".\"Orders\" \"Orders\"")]
+        [InlineData("SELECT CAST(\"Orders\".\"OrderedAt\" AS DATE) AS \"OrderedAt\" FROM \"public\".\"Orders\" \"Orders\"")]
+        [InlineData("SELECT CAST(\"Orders\".\"Company\" AS VARCHAR(3)) AS \"Company\" FROM \"public\".\"Orders\" \"Orders\"")]
+        [InlineData("SELECT \"Orders\".\"Freight\"::int AS \"Freight\", \"Orders\".\"Company\" FROM \"public\".\"Orders\" \"Orders\"")]
+        [InlineData("SELECT CAST(\"Orders\".\"json\" AS JSONB) AS \"json\" FROM \"public\".\"Orders\" \"Orders\"")]
+        public void Projection_cast_that_changes_the_value_does_not_translate(string sql)
+        {
+            Assert.False(PgSqlToRqlTranslator.TryParse(sql, Array.Empty<int>(), out _));
+        }
+
         [RavenFact(RavenTestCategory.PostgreSql)]
         public void Text_cast_filter_on_a_non_grouped_field_does_not_translate()
         {
