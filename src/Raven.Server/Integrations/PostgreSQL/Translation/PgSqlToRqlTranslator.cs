@@ -1072,11 +1072,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
             foreach (var t in selectStmt.TargetList)
             {
-                var val = t?.ResTarget?.Val;
-                while (val != null && (val.TypeCast?.Arg != null || val.RelabelType?.Arg != null))
-                    val = val.TypeCast?.Arg ?? val.RelabelType.Arg;
-
-                var fields = val?.ColumnRef?.Fields;
+                var fields = PgSqlAstHelpers.UnwrapTextCastOfColumn(t?.ResTarget?.Val)?.ColumnRef?.Fields;
                 if (fields is { Count: > 0 } && fields[^1]?.String?.Sval is { } last && PgSyntheticColumns.IsJsonColumn(last))
                     return true;
             }
@@ -1141,15 +1137,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
         private static string TranslateSelectTargetValue(Node val, string fromAlias)
         {
-            // Unwrap CAST(expr AS type) / RelabelType wrappers. Tableau's data-preview projects each
-            // column as `CAST(col AS TEXT)`; RavenDB doesn't reshape values in a projection, so we
-            // project the underlying column and let the client read the value. Only these harmless
-            // wrappers are unwrapped - an arbitrary expression still falls through to Unsupported.
-            while (val != null && (val.TypeCast?.Arg != null || val.RelabelType?.Arg != null))
-                val = val.TypeCast?.Arg ?? val.RelabelType.Arg;
-
-            if (val == null)
-                throw UnsupportedSelectProjection();
+            val = PgSqlAstHelpers.UnwrapTextCastOfColumn(val);
 
             if (val.ColumnRef != null)
             {
