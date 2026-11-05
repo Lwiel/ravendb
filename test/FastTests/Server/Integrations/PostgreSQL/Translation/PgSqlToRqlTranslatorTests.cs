@@ -65,6 +65,15 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         }
 
         [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT * FROM \"public\".\"Products\" \"Products\" WHERE \"Products\".\"Discontinued\"", "from 'Products' where Discontinued = true")]
+        [InlineData("SELECT * FROM \"public\".\"Products\" \"Products\" WHERE NOT \"Products\".\"Discontinued\"", "from 'Products' where Discontinued = false")]
+        [InlineData("SELECT * FROM \"public\".\"Products\" \"Products\" WHERE \"Products\".\"Discontinued\" AND \"Products\".\"PricePerUnit\" > 20", "from 'Products' where Discontinued = true and PricePerUnit > 20.0")]
+        public void BareBooleanColumnPredicate_ComparesWithTheBooleanLiteral(string sql, string expected)
+        {
+            Assert.Equal(expected, Translate(sql));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
         [InlineData("SELECT setting FROM pg_catalog.pg_settings WHERE name='max_index_keys'")]
         [InlineData("SELECT setting FROM pg_settings WHERE name='max_index_keys'")]
         [InlineData("SELECT * FROM pg_catalog.pg_stat_activity")]
