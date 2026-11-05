@@ -255,10 +255,10 @@ namespace FastTests.Server.Integrations.PostgreSQL
             "from 'Orders' group by Company where (Freight >= 5.0 and Freight <= 30.5) select Company, sum(Freight) as a0")]
         [InlineData(
             "SELECT \"Orders\".\"Company\" AS \"Company\", COUNT(1) AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING (COUNT(1) > 2)",
-            "from 'Orders' group by Company where (Count > 2) select Company, count() as a0")]
+            "from 'Orders' group by Company where (Count > 2.0) select Company, count() as a0")]
         [InlineData(
             "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(1) AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 HAVING (COUNT(*) BETWEEN 2 AND 9)",
-            "from 'Orders' group by Company where (Count between 2 and 9) select Company, count() as a0")]
+            "from 'Orders' group by Company where (Count between 2.0 and 9.0) select Company, count() as a0")]
         [InlineData(
             "SELECT \"Orders\".\"Company\" AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"a0\" FROM \"public\".\"Orders\" \"Orders\" WHERE (\"Orders\".\"Company\" = 'Gamma' OR \"Orders\".\"Company\" = 'Alpha') GROUP BY 1 HAVING (SUM(\"Orders\".\"Freight\") > 5)",
             "from 'Orders' group by Company where (Company = 'Gamma' or Company = 'Alpha') and (Freight > 5.0) select Company, sum(Freight) as a0")]
@@ -353,6 +353,78 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.Equal(new Dictionary<string, double> { ["Alpha"] = 30 }, ToSums(rows));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        [RavenData("\"Freight\" > 10", "C", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" >= 10", "B,C", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" <= 10", "A,B,D", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" < 10", "A,D", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" > 9", "A,B,C", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" = 10", "B", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" <> 10", "A,C,D", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" IN (10)", "B", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" BETWEEN 9 AND 10", "A,B", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" >= 0", "A,B,C", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Freight\" < 0", "D", SearchEngineMode = RavenSearchEngineMode.All)]
+        public async Task Integer_bound_on_a_fractional_field_compares_the_exact_value(Options options, string condition, string expected)
+        {
+            using var store = GetDocumentStore(options);
+            using (var session = store.OpenAsyncSession())
+            {
+                await session.StoreAsync(new Order { Company = "A", Freight = 9.5 });
+                await session.StoreAsync(new Order { Company = "B", Freight = 10 });
+                await session.StoreAsync(new Order { Company = "C", Freight = 10.5 });
+                await session.StoreAsync(new Order { Company = "D", Freight = -0.5 });
+                await session.SaveChangesAsync();
+            }
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm($"SELECT \"Company\", \"Freight\" FROM \"public\".\"Orders\" WHERE {condition}", store, database);
+
+            Assert.Equal(expected, string.Join(",", rows.Select(r => r[0]).Order()));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        [RavenData("\"Units\" = 10", "B", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Units\" <> 10", "A,C", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Units\" > 9", "B,C", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Units\" <= 10", "A,B", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Units\" BETWEEN 10 AND 11", "B,C", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("\"Units\" IN (10)", "B", SearchEngineMode = RavenSearchEngineMode.All)]
+        public async Task Integer_bound_on_an_integer_field_compares_the_exact_value(Options options, string condition, string expected)
+        {
+            using var store = GetDocumentStore(options);
+            await SeedItems(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm($"SELECT \"Company\", \"Units\" FROM \"public\".\"Items\" WHERE {condition}", store, database);
+
+            Assert.Equal(expected, string.Join(",", rows.Select(r => r[0]).Order()));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        [RavenData(SearchEngineMode = RavenSearchEngineMode.All)]
+        public async Task Integer_filter_on_an_integer_group_key_keeps_that_group(Options options)
+        {
+            using var store = GetDocumentStore(options);
+            await SeedItems(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(
+                "SELECT \"Items\".\"Units\" AS \"Units\", COUNT(1) AS \"cnt\" FROM \"public\".\"Items\" \"Items\" WHERE (\"Items\".\"Units\" = 10) GROUP BY 1",
+                store, database);
+
+            Assert.Equal(new[] { "10", "1" }, Assert.Single(rows));
+        }
+
+        private static async Task SeedItems(IDocumentStore store)
+        {
+            using var session = store.OpenAsyncSession();
+            await session.StoreAsync(new Item { Company = "A", Units = 9 });
+            await session.StoreAsync(new Item { Company = "B", Units = 10 });
+            await session.StoreAsync(new Item { Company = "C", Units = 11 });
+            await session.SaveChangesAsync();
+        }
+
         private static string Translate(string sql)
         {
             Assert.True(PgSqlToRqlTranslator.TryParse(sql, Array.Empty<int>(), out var rql));
@@ -409,6 +481,12 @@ namespace FastTests.Server.Integrations.PostgreSQL
             public string Company { get; set; }
             public string ShipVia { get; set; }
             public double Freight { get; set; }
+        }
+
+        private sealed class Item
+        {
+            public string Company { get; set; }
+            public long Units { get; set; }
         }
     }
 }

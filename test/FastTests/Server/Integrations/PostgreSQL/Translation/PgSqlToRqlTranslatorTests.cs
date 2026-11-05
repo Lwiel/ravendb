@@ -41,7 +41,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         public void WhereAmountGreaterThan()
         {
             var sql = "SELECT * FROM orders WHERE amount > 10";
-            var expected = "from 'orders' where amount > 10";
+            var expected = "from 'orders' where amount > 10.0";
 
             Assert.Equal(expected, Translate(sql));
         }
@@ -75,7 +75,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         [RavenFact(RavenTestCategory.PostgreSql)]
         public void WhereConstantTrueAndedWithRealPredicate_KeepsOnlyReal()
         {
-            Assert.Equal("from 'orders' where amount > 10", Translate("SELECT * FROM orders WHERE 1=1 AND amount > 10"));
+            Assert.Equal("from 'orders' where amount > 10.0", Translate("SELECT * FROM orders WHERE 1=1 AND amount > 10"));
         }
 
         // Tableau's data preview projects alias-qualified columns wrapped in CAST(col AS TEXT). The cast is
@@ -131,7 +131,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         public void WhereAnd()
         {
             var sql = "SELECT * FROM orders WHERE status = 'Pending' AND amount > 10";
-            var expected = "from 'orders' where status = 'Pending' and amount > 10";
+            var expected = "from 'orders' where status = 'Pending' and amount > 10.0";
 
             Assert.Equal(expected, Translate(sql));
         }
@@ -215,7 +215,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         public void NotBinary_FlipsViaNegateNext()
         {
             var sql = @"SELECT ""Company"" FROM ""public"".""Orders"" WHERE NOT (""Freight"" > 50) LIMIT 5";
-            var expected = "from 'Orders' where exists(Freight) and not Freight > 50 select Company limit 0, 5";
+            var expected = "from 'Orders' where exists(Freight) and not Freight > 50.0 select Company limit 0, 5";
 
             Assert.Equal(expected, Translate(sql));
         }
@@ -233,7 +233,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         public void WhereBetween()
         {
             var sql = "SELECT * FROM orders WHERE amount BETWEEN 10 AND 20";
-            var expected = "from 'orders' where amount between 10 and 20";
+            var expected = "from 'orders' where amount between 10.0 and 20.0";
 
             Assert.Equal(expected, Translate(sql));
         }
@@ -260,7 +260,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         public void WhereParenthesizedOrAndedWithComparison()
         {
             var sql = "SELECT * FROM orders WHERE (status = 'Pending' OR status = 'Shipped') AND amount > 10";
-            var expected = "from 'orders' where (status = 'Pending' or status = 'Shipped') and amount > 10";
+            var expected = "from 'orders' where (status = 'Pending' or status = 'Shipped') and amount > 10.0";
 
             Assert.Equal(expected, Translate(sql));
         }
@@ -326,7 +326,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         public void SelectColumnsWithWhere()
         {
             var sql = "SELECT id, status, shipTo.city FROM orders WHERE amount > 10";
-            var expected = "from 'orders' where amount > 10 select id(), status, shipto.city";
+            var expected = "from 'orders' where amount > 10.0 select id(), status, shipto.city";
 
             Assert.Equal(expected, Translate(sql));
         }
@@ -366,7 +366,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         {
             // A field name with spaces has no break-out characters, so it is quoted (via the builder)
             // rather than rejected.
-            Assert.Equal("from 'users' where 'Unit Price' > 10", Translate("SELECT * FROM users WHERE \"Unit Price\" > 10"));
+            Assert.Equal("from 'users' where 'Unit Price' > 10.0", Translate("SELECT * FROM users WHERE \"Unit Price\" > 10"));
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]

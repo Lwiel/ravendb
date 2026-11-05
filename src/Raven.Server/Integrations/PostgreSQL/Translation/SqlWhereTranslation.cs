@@ -33,6 +33,15 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
 
     internal enum SqlLikeShape { Equals, StartsWith, EndsWith }
 
+    internal static class RqlNumberLiteral
+    {
+        public static string Format(IFormattable number)
+        {
+            var text = number.ToString(null, CultureInfo.InvariantCulture);
+            return text.AsSpan().ContainsAnyExcept("-0123456789") ? text : text + ".0";
+        }
+    }
+
     // LIKE / ILIKE pattern shapes that map onto an RQL predicate, and readable limitations for the ones
     // that don't. Shared by the translator (which emits the RQL) and UnhandledQueryDiagnoser (which turns
     // a rejection into the wire error), so both agree on exactly which shapes are supported.
@@ -211,7 +220,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 if (TryExtractScalar(items[1], out var upper) == false)
                     return false;
 
-                result = new ParsedBetween(field, lower, upper);
+                result = new ParsedBetween(field, PromoteIntegerBound(lower), PromoteIntegerBound(upper));
                 return true;
             }
 
@@ -271,9 +280,16 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             if (TryExtractScalar(aExpr.Rexpr, out var rightValue) == false)
                 return false;
 
-            result = new ParsedBinary(leftField, op, rightValue);
+            result = new ParsedBinary(leftField, op, PromoteIntegerBound(rightValue));
             return true;
         }
+
+        private const long MaxExactDoubleInteger = 1L << 53;
+
+        private static ParsedValue PromoteIntegerBound(ParsedValue value) =>
+            value.Kind == ParsedValueKind.Long && (long)value.Raw is >= -MaxExactDoubleInteger and <= MaxExactDoubleInteger
+                ? new ParsedValue((double)(long)value.Raw, ParsedValueKind.Double)
+                : value;
 
         private static bool TryParseNullTest(NullTest nullTest, string outerAliasToStrip, out ParsedWhere result)
         {

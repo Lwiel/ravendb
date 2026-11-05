@@ -875,7 +875,7 @@ namespace FastTests.Server.Integrations.PostgreSQL.PowerBI
             Assert.NotNull(queryString);
 
             var expected = """
-FROM Users AS u WHERE (((((u.Age > 0 AND u.Name != null) AND ((u.Company != null AND (u.Freight != 5 OR u.Freight = null)) AND (u.OrderedAt >= 1 AND u.OrderedAt <= 10))) AND (u.FirstName != null AND u.Score != 5)) AND ((u.IsActive != true OR u.Score != 5) AND u.Title != null)) AND (((u.Age >= 10 AND u.Age <= 20) AND u.Name IN ('a', 'b', 'c')) AND u.DeletedAt = null))
+FROM Users AS u WHERE (((((u.Age > 0 AND u.Name != null) AND ((u.Company != null AND (u.Freight != 5.0 OR u.Freight = null)) AND (u.OrderedAt >= 1.0 AND u.OrderedAt <= 10.0))) AND (u.FirstName != null AND u.Score != 5.0)) AND ((u.IsActive != true OR u.Score != 5.0) AND u.Title != null)) AND (((u.Age >= 10.0 AND u.Age <= 20.0) AND u.Name IN ('a', 'b', 'c')) AND u.DeletedAt = null))
 ORDER BY u.Name
 SELECT { 
 
@@ -1061,7 +1061,7 @@ SELECT {
             Assert.NotNull(queryString);
 
             var expected = """
-FROM Orders AS o WHERE (o.Company != null AND (((o.Employee != 'X' OR o.Employee = null) AND o.ShippedAt != null) AND (o.Freight >= 10 AND o.Freight <= 20)))
+FROM Orders AS o WHERE (o.Company != null AND (((o.Employee != 'X' OR o.Employee = null) AND o.ShippedAt != null) AND (o.Freight >= 10.0 AND o.Freight <= 20.0)))
 SELECT { 
  Company: o.Company, Employee: o.Employee, Freight: o.Freight, OrderedAt: o.OrderedAt, ShippedAt: o.ShippedAt 
 }
