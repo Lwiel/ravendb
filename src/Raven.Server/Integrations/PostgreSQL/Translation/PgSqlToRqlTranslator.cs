@@ -455,10 +455,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 return Convert.ToString(value, CultureInfo.InvariantCulture);
 
             if (value is float or double)
-            {
-                var text = Convert.ToString(value, CultureInfo.InvariantCulture);
-                return text.AsSpan().ContainsAnyExcept("-0123456789") ? text : text + ".0";
-            }
+                return RqlNumberLiteral.Format((IFormattable)value);
 
             if (value is decimal)
                 return Convert.ToString(value, CultureInfo.InvariantCulture);
@@ -774,31 +771,25 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             IReadOnlyList<GroupByAggregate> aggregates,
             string fromAlias)
         {
-            var sumFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var rewritten = RewriteHavingOperands(having.Clone(), groupKeys, aggregates, sumFields, fromAlias);
+            var rewritten = RewriteHavingOperands(having.Clone(), groupKeys, aggregates, fromAlias);
 
             if (SqlWhereParser.TryParse(rewritten, fromAlias, out var parsed) == false || TryFoldConstant(parsed) != null)
                 throw UnsupportedGroupByHaving();
 
             q.AndAlso(wrapPreviousQueryClauses: true);
-            EmitWhere(q, PromoteSumBounds(SimplifyConstants(parsed), sumFields), wrapInSubclause: true);
+            EmitWhere(q, SimplifyConstants(parsed), wrapInSubclause: true);
         }
 
-        private static Node RewriteHavingOperands(
-            Node node,
-            HashSet<string> groupKeys,
-            IReadOnlyList<GroupByAggregate> aggregates,
-            HashSet<string> sumFields,
-            string fromAlias)
+        private static Node RewriteHavingOperands(Node node, HashSet<string> groupKeys, IReadOnlyList<GroupByAggregate> aggregates, string fromAlias)
         {
             if (node?.BoolExpr is { } boolExpr)
             {
                 for (int i = 0; i < boolExpr.Args.Count; i++)
-                    boolExpr.Args[i] = RewriteHavingOperands(boolExpr.Args[i], groupKeys, aggregates, sumFields, fromAlias);
+                    boolExpr.Args[i] = RewriteHavingOperands(boolExpr.Args[i], groupKeys, aggregates, fromAlias);
             }
             else if (node?.AExpr is { } aExpr)
             {
-                aExpr.Lexpr = RewriteHavingOperand(aExpr.Lexpr, groupKeys, aggregates, sumFields, fromAlias);
+                aExpr.Lexpr = RewriteHavingOperand(aExpr.Lexpr, groupKeys, aggregates, fromAlias);
             }
             else if (node?.NullTest != null)
             {
@@ -808,12 +799,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             return node;
         }
 
-        private static Node RewriteHavingOperand(
-            Node operand,
-            HashSet<string> groupKeys,
-            IReadOnlyList<GroupByAggregate> aggregates,
-            HashSet<string> sumFields,
-            string fromAlias)
+        private static Node RewriteHavingOperand(Node operand, HashSet<string> groupKeys, IReadOnlyList<GroupByAggregate> aggregates, string fromAlias)
         {
             var column = PgSqlAstHelpers.UnwrapTextCastOfColumn(operand);
             if (column?.ColumnRef != null)
@@ -835,31 +821,8 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 aggregate.OrderField.Contains('.'))
                 throw UnsupportedGroupByHaving();
 
-            if (aggregate.Ordering == OrderingType.Double)
-                sumFields.Add(aggregate.OrderField);
-
             return new Node { ColumnRef = new ColumnRef { Fields = { new Node { String = new PgSqlParser.String { Sval = aggregate.OrderField } } } } };
         }
-
-        private static ParsedWhere PromoteSumBounds(ParsedWhere parsed, HashSet<string> sumFields)
-        {
-            return parsed switch
-            {
-                ParsedAnd a => new ParsedAnd(a.Children.Select(c => PromoteSumBounds(c, sumFields)).ToList()),
-                ParsedOr o => new ParsedOr(o.Children.Select(c => PromoteSumBounds(c, sumFields)).ToList()),
-                ParsedNot n => new ParsedNot(PromoteSumBounds(n.Child, sumFields)),
-                ParsedBinary b when IsSumField(b.FieldPath) => b with { Value = PromoteToDouble(b.Value) },
-                ParsedIn i when IsSumField(i.FieldPath) => i with { Values = i.Values.Select(PromoteToDouble).ToList() },
-                ParsedBetween bt when IsSumField(bt.FieldPath) => bt with { Lower = PromoteToDouble(bt.Lower), Upper = PromoteToDouble(bt.Upper) },
-                ParsedLike => throw UnsupportedGroupByHaving(),
-                _ => parsed
-            };
-
-            bool IsSumField(IReadOnlyList<string> path) => path.Count == 1 && sumFields.Contains(path[0]);
-        }
-
-        private static ParsedValue PromoteToDouble(ParsedValue value) =>
-            value.Kind == ParsedValueKind.Long ? new ParsedValue((double)(long)value.Raw, ParsedValueKind.Double) : value;
 
         // True iff every column referenced by the WHERE predicate is in <paramref name="allowed"/>.
         // Returns false on any predicate shape we can't confidently decompose, so the caller rejects
