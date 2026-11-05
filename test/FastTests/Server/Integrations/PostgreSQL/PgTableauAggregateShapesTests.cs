@@ -465,6 +465,20 @@ namespace FastTests.Server.Integrations.PostgreSQL
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task PgJdbc_max_index_keys_lookup_returns_the_setting_without_creating_an_index()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (columns, rows) = await Run("SELECT setting FROM pg_catalog.pg_settings WHERE name='max_index_keys'", database);
+
+            Assert.Equal(new[] { "setting" }, columns);
+            Assert.Equal(new[] { "32" }, Assert.Single(rows));
+            Assert.Empty(database.IndexStore.GetIndexes());
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
         public async Task Year_dimension_returns_a_pg_error_naming_the_computed_group_key()
         {
             using var store = GetDocumentStore();

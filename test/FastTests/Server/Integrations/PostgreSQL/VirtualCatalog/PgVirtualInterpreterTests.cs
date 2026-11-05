@@ -35,6 +35,16 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
             Assert.Equal("32", DecodeCell(table, row: 0, column: 0));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT setting FROM pg_catalog.pg_settings WHERE name='max_index_keys'")]
+        [InlineData("SELECT setting FROM pg_settings WHERE name = 'max_index_keys'")]
+        public void Pg_settings_answers_a_setting_lookup(string sql)
+        {
+            Assert.True(PgVirtualInterpreter.TryExecute(sql, EmptyCtx(), out var table));
+            Assert.Single(table.Data);
+            Assert.Equal("32", DecodeCell(table, row: 0, column: 0));
+        }
+
         [RavenFact(RavenTestCategory.PostgreSql)]
         public void Current_setting_unknown_setting_falls_through()
         {
