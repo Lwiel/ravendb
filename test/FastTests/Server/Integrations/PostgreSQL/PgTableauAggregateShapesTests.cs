@@ -445,6 +445,20 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.Contains("NULLS", error.Message);
         }
 
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Year_dimension_returns_a_pg_error_naming_the_computed_group_key()
+        {
+            using var store = GetDocumentStore();
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var error = Assert.Throws<PgErrorException>(() => PgQuery.CreateInstance(
+                "SELECT SUM(\"Orders\".\"Freight\") AS \"sum:Freight:ok\", CAST(TRUNC(EXTRACT(YEAR FROM \"Orders\".\"OrderedAt\")) AS INTEGER) AS \"yr:OrderedAt:ok\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 2",
+                Array.Empty<int>(), database, session: null));
+
+            Assert.Equal(PgErrorCodes.FeatureNotSupported, error.ErrorCode);
+            Assert.Contains("GROUP BY on a computed expression over \"OrderedAt\"", error.Message);
+        }
+
         private static async Task SeedWithNulls(IDocumentStore store)
         {
             using (var session = store.OpenAsyncSession())
