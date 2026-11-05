@@ -110,6 +110,13 @@ namespace Raven.Server.Integrations.PostgreSQL
             if (TryDiagnoseLike(outer, out message))
                 return true;
 
+            if (TryGetExpressionGroupKey(outer, out var groupKeyColumn))
+            {
+                var over = groupKeyColumn == null ? "" : $" over \"{groupKeyColumn}\"";
+                message = $"GROUP BY on a computed expression{over} has no RQL form. RavenDB's map-reduce groups by the values stored in the documents, so every GROUP BY key has to be a plain column. BI tools such as Tableau send such an expression for YEAR, QUARTER, MONTH and the other date parts, for truncated dates and for calculated fields. Store the value you group by (for example the order year) as its own document field and group by that column.";
+                return true;
+            }
+
             if (outer.HavingClause != null)
             {
                 message = "HAVING translates to RavenDB's post-reduction group filter, which compares the count(*) and sum(<column>) aggregates listed in the SELECT clause, and the GROUP BY keys, using =, <>, <, <=, >, >=, IN and BETWEEN. Add the aggregate you filter on to the SELECT list and express the condition in that form, or run the query as RQL.";
@@ -656,6 +663,63 @@ namespace Raven.Server.Integrations.PostgreSQL
                     return false;
             }
             return true;
+        }
+
+        private static bool TryGetExpressionGroupKey(SelectStmt selectStmt, out string column)
+        {
+            column = null;
+
+            if (selectStmt.GroupClause is not { Count: > 0 } groupClause)
+                return false;
+
+            foreach (var node in groupClause)
+            {
+                var key = node;
+                if (key?.AConst?.Ival is { } ordinal && selectStmt.TargetList is { } targets && ordinal.Ival >= 1 && ordinal.Ival <= targets.Count)
+                    key = targets[ordinal.Ival - 1]?.ResTarget?.Val;
+
+                if (key == null || PgSqlAstHelpers.UnwrapTextCastOfColumn(key).ColumnRef != null)
+                    continue;
+
+                column = FindFirstColumnName(key, depth: 0);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string FindFirstColumnName(Node node, int depth)
+        {
+            if (node == null || depth > MaxJoinSearchDepth)
+                return null;
+
+            if (node.ColumnRef?.Fields is { Count: > 0 } fields)
+                return fields[^1]?.String?.Sval;
+
+            var children = new List<Node>();
+            if (node.FuncCall?.Args is { } args)
+                children.AddRange(args);
+            if (node.TypeCast?.Arg is { } castArg)
+                children.Add(castArg);
+            if (node.AExpr is { } aExpr)
+                children.AddRange(new[] { aExpr.Lexpr, aExpr.Rexpr });
+            if (node.CaseExpr is { } caseExpr)
+            {
+                children.Add(caseExpr.Arg);
+                foreach (var when in caseExpr.Args)
+                    children.AddRange(new[] { when?.CaseWhen?.Expr, when?.CaseWhen?.Result });
+                children.Add(caseExpr.Defresult);
+            }
+            if (node.CoalesceExpr?.Args is { } coalesceArgs)
+                children.AddRange(coalesceArgs);
+
+            foreach (var child in children)
+            {
+                if (FindFirstColumnName(child, depth + 1) is { } name)
+                    return name;
+            }
+
+            return null;
         }
 
         private static bool IsAggregateFunctionName(string name)

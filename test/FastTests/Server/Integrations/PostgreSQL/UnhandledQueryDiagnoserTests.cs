@@ -478,6 +478,29 @@ namespace FastTests.Server.Integrations.PostgreSQL
         }
 
         [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("""SELECT SUM("Orders"."Freight") AS "sum:Freight:ok", CAST(TRUNC(EXTRACT(YEAR FROM "Orders"."OrderedAt")) AS INTEGER) AS "yr:OrderedAt:ok" FROM "public"."Orders" "Orders" GROUP BY 2""")]
+        [InlineData("""SELECT CAST(TRUNC(EXTRACT(QUARTER FROM "Orders"."OrderedAt")) AS INTEGER) AS "qr:OrderedAt:ok", SUM("Orders"."Freight") AS "sum:Freight:ok" FROM "public"."Orders" "Orders" GROUP BY 1""")]
+        [InlineData("""SELECT DATE_TRUNC('MONTH', "Orders"."OrderedAt") AS "tmn:OrderedAt:ok", SUM("Orders"."Freight") AS "sum:Freight:ok" FROM "public"."Orders" "Orders" GROUP BY 1""")]
+        [InlineData("""SELECT CAST("Orders"."OrderedAt" AS DATE) AS "md:OrderedAt:ok", COUNT(1) AS "cnt" FROM "public"."Orders" "Orders" GROUP BY 1""")]
+        [InlineData("""SELECT (CASE WHEN "Orders"."Freight" > 10 THEN 'high' ELSE 'low' END) AS "band", COUNT(1) AS "cnt" FROM "public"."Orders" "Orders" GROUP BY (CASE WHEN "Orders"."Freight" > 10 THEN 'high' ELSE 'low' END)""")]
+        public void ComputedGroupByKey_DetectedAndNamesTheColumn(string sql)
+        {
+            Assert.True(UnhandledQueryDiagnoser.TryDiagnose(sql, out var message));
+            Assert.Contains("GROUP BY on a computed expression over \"", message);
+            Assert.Contains(sql.Contains("Freight\" >") ? "\"Freight\"" : "\"OrderedAt\"", message);
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void TextCastGroupByKey_IsNotReportedAsAComputedExpression()
+        {
+            var sql = """SELECT CAST("Orders"."Company" AS TEXT) AS "Company", SUM("Orders"."Freight") AS "s" FROM "public"."Orders" "Orders" WHERE "Orders"."Freight" > 5 GROUP BY 1""";
+
+            Assert.True(UnhandledQueryDiagnoser.TryDiagnose(sql, out var message));
+            Assert.DoesNotContain("computed expression", message);
+            Assert.Contains("non-grouped field", message);
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
         [InlineData("""SELECT "Freight" FROM "public"."Orders" ORDER BY "Freight" DESC""")]
         [InlineData("""SELECT "Freight" FROM "public"."Orders" ORDER BY "Freight" ASC""")]
         [InlineData("""SELECT "Freight" FROM "public"."Orders" ORDER BY "Freight" """)]
