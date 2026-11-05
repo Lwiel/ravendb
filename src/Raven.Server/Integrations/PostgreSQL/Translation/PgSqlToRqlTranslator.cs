@@ -889,7 +889,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 if (sortBy == null)
                     continue;
 
-                RejectUnsupportedSortModifiers(sortNode);
+                RejectSortUsing(sortBy);
 
                 string orderField;
                 OrderingType ordering;
@@ -926,6 +926,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 {
                     throw UnsupportedOrderByForGroupBy();
                 }
+
+                if (ordering == OrderingType.String)
+                    RejectNullsPlacementOtherThanRavenDbs(sortBy);
 
                 if (sortBy.SortbyDir == SortByDir.SortbyDesc)
                     q.OrderByDescending(orderField, ordering);
@@ -1683,7 +1686,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 var sortBy = sortNode.SortBy
                              ?? throw new NotSupportedException("Unsupported ORDER BY clause (only column sort keys are supported)");
 
-                RejectUnsupportedSortModifiers(sortNode);
+                RejectSortUsing(sortBy);
 
                 var fieldName = ExtractFieldName(PgSqlAstHelpers.UnwrapTextCastOfColumn(sortBy.Node), fromAlias);
                 if (string.IsNullOrEmpty(fieldName))
@@ -1700,6 +1703,11 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 if (sortTypeMap != null && sortTypeMap.TryGetValue(fieldName, out var inferred))
                     ordering = inferred;
 
+                if (ordering == OrderingType.String)
+                    RejectNullsPlacementOtherThanRavenDbs(sortBy);
+                else if (sortBy.SortbyNulls is SortByNulls.First or SortByNulls.Last)
+                    throw UnsupportedNullsPlacement();
+
                 if (sortBy.SortbyDir == SortByDir.SortbyDesc)
                     q.OrderByDescending(fieldName, ordering);
                 else
@@ -1707,20 +1715,21 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             }
         }
 
-        // RQL has no NULLS FIRST / NULLS LAST and no operator-driven sort, and its own null ordering is
-        // not guaranteed to match what was asked for, so an approximation would sort by something else.
-        private static void RejectUnsupportedSortModifiers(Node sortNode)
+        private static void RejectSortUsing(SortBy sortBy)
         {
-            var sortBy = sortNode.SortBy;
-            if (sortBy == null)
-                return;
-
-            if (sortBy.SortbyNulls is SortByNulls.First or SortByNulls.Last)
-                throw new NotSupportedException("Unsupported ORDER BY clause (NULLS FIRST / NULLS LAST is not supported)");
-
             if (sortBy.SortbyDir == SortByDir.SortbyUsing)
                 throw new NotSupportedException("Unsupported ORDER BY clause (ORDER BY ... USING is not supported)");
         }
+
+        private static void RejectNullsPlacementOtherThanRavenDbs(SortBy sortBy)
+        {
+            var ravenDbPlacement = sortBy.SortbyDir == SortByDir.SortbyDesc ? SortByNulls.Last : SortByNulls.First;
+            if ((sortBy.SortbyNulls is SortByNulls.First or SortByNulls.Last) && sortBy.SortbyNulls != ravenDbPlacement)
+                throw UnsupportedNullsPlacement();
+        }
+
+        private static NotSupportedException UnsupportedNullsPlacement() =>
+            new("Unsupported ORDER BY clause (NULLS FIRST / NULLS LAST differs from RavenDB's null ordering)");
 
         // ORDER BY may name a SELECT alias instead of a field. RQL sorts on the underlying document
         // field, so the alias has to be resolved back or the sort targets a field that does not exist.

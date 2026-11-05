@@ -1042,13 +1042,32 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         }
 
         [RavenTheory(RavenTestCategory.PostgreSql)]
-        [InlineData("SELECT \"Freight\" FROM \"Orders\" ORDER BY \"Freight\" DESC NULLS LAST")]
-        [InlineData("SELECT \"Freight\" FROM \"Orders\" ORDER BY \"Freight\" NULLS FIRST")]
+        [InlineData("SELECT \"Freight\" FROM \"Orders\" ORDER BY \"Freight\" DESC NULLS FIRST")]
+        [InlineData("SELECT \"Freight\" FROM \"Orders\" ORDER BY \"Freight\" NULLS LAST")]
         [InlineData("SELECT \"Freight\" FROM \"Orders\" ORDER BY \"Freight\" USING >")]
         [InlineData("SELECT \"Company\", COUNT(*) FROM \"Orders\" GROUP BY \"Company\" ORDER BY \"Company\" NULLS LAST")]
+        [InlineData("SELECT \"Company\", COUNT(*) FROM \"Orders\" GROUP BY \"Company\" ORDER BY \"Company\" DESC NULLS FIRST")]
         public void OrderByWithAnUnsupportedSortModifier_IsRejected(string sql)
         {
             AssertRejected(sql);
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData(
+            "SELECT \"Company\" FROM \"Orders\" ORDER BY \"Company\" ASC NULLS FIRST",
+            "SELECT \"Company\" FROM \"Orders\" ORDER BY \"Company\" ASC")]
+        [InlineData(
+            "SELECT \"Company\" FROM \"Orders\" ORDER BY \"Company\" DESC NULLS LAST",
+            "SELECT \"Company\" FROM \"Orders\" ORDER BY \"Company\" DESC")]
+        [InlineData(
+            "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"sum:Freight:ok\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 ORDER BY 2 DESC NULLS LAST, 1 ASC NULLS FIRST LIMIT 5",
+            "SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"sum:Freight:ok\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 ORDER BY 2 DESC, 1 ASC LIMIT 5")]
+        [InlineData(
+            "SELECT \"Company\", COUNT(*) AS \"c\" FROM \"Orders\" GROUP BY \"Company\" ORDER BY COUNT(*) ASC NULLS LAST",
+            "SELECT \"Company\", COUNT(*) AS \"c\" FROM \"Orders\" GROUP BY \"Company\" ORDER BY COUNT(*) ASC")]
+        public void OrderByWithRavenDbsNullPlacement_TranslatesLikeThePlainSort(string withNulls, string plain)
+        {
+            Assert.Equal(Translate(plain), Translate(withNulls));
         }
 
         [RavenTheory(RavenTestCategory.PostgreSql)]
