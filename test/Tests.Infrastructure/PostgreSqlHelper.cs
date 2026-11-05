@@ -105,6 +105,27 @@ public static class PostgreSqlHelper
         return rows;
     }
 
+    public static List<byte[][]> ParseDataRowCells(byte[] buffer)
+    {
+        var rows = new List<byte[][]>();
+        foreach (var message in ParseMessages(buffer))
+        {
+            if (message.Type == MessageType.DataRow)
+                rows.Add(message.AsDataRowCells());
+        }
+
+        return rows;
+    }
+
+    public static async Task<byte[]> ExecuteToWireAsync(PgQuery query, CancellationToken token)
+    {
+        var pipe = new Pipe();
+        var readTask = ReadAllAsync(pipe.Reader, token);
+        await query.Execute(new MessageBuilder(), pipe.Writer, token);
+        await pipe.Writer.CompleteAsync();
+        return await readTask;
+    }
+
     public static List<PgWireField> ParseRowDescription(byte[] buffer)
     {
         foreach (var message in ParseMessages(buffer))
@@ -130,25 +151,27 @@ public readonly struct PgWireMessage(MessageType type, ReadOnlyMemory<byte> payl
 
     public ReadOnlyMemory<byte> Payload => payload;
 
-    public string[] AsDataRow()
+    public string[] AsDataRow() => Array.ConvertAll(AsDataRowCells(), cell => cell == null ? null : Encoding.UTF8.GetString(cell));
+
+    public byte[][] AsDataRowCells()
     {
         var span = payload.Span;
         int pos = 0;
         int count = BinaryPrimitives.ReadInt16BigEndian(span.Slice(pos, 2));
         pos += 2;
 
-        var values = new string[count];
+        var cells = new byte[count][];
         for (int c = 0; c < count; c++)
         {
             int size = BinaryPrimitives.ReadInt32BigEndian(span.Slice(pos, 4));
             pos += 4;
             if (size < 0)
                 continue;
-            values[c] = Encoding.UTF8.GetString(span.Slice(pos, size));
+            cells[c] = span.Slice(pos, size).ToArray();
             pos += size;
         }
 
-        return values;
+        return cells;
     }
 
     public List<PgWireField> AsRowDescription()

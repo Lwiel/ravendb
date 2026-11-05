@@ -1,14 +1,13 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Threading.Tasks;
 using Raven.Client.Documents;
 using Raven.Server.Documents;
 using Raven.Server.Integrations.PostgreSQL;
 using Raven.Server.Integrations.PostgreSQL.Exceptions;
-using Raven.Server.Integrations.PostgreSQL.Messages;
 using Raven.Server.Integrations.PostgreSQL.Translation;
 using Tests.Infrastructure;
 using Xunit;
@@ -214,6 +213,23 @@ namespace FastTests.Server.Integrations.PostgreSQL
 
             Assert.Equal(new[] { "cnt:Orders_4F2A:ok" }, columns);
             Assert.Equal(new[] { "21" }, Assert.Single(rows));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Row_count_is_sent_in_the_binary_format_bound_after_describe()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            using var query = PgQuery.CreateInstance("SELECT COUNT(1) AS \"cnt\" FROM \"public\".\"Orders\" \"Orders\"", Array.Empty<int>(), database, session: null);
+            await query.Init();
+            query.Bind(Array.Empty<byte[]>(), Array.Empty<short>(), new short[] { 1 });
+
+            var rows = ParseDataRowCells(await ExecuteToWireAsync(query, TestContext.Current.CancellationToken));
+
+            var cell = Assert.Single(Assert.Single(rows));
+            Assert.Equal(21L, BinaryPrimitives.ReadInt64BigEndian(cell));
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
@@ -622,18 +638,8 @@ namespace FastTests.Server.Integrations.PostgreSQL
             return (columns.Select(c => c.Name).ToList(), await Drain(query));
         }
 
-        private static async Task<List<string[]>> Drain(PgQuery query)
-        {
-            var token = TestContext.Current.CancellationToken;
-            var pipe = new Pipe();
-            var builder = new MessageBuilder();
-
-            var readTask = ReadAllAsync(pipe.Reader, token);
-            await query.Execute(builder, pipe.Writer, token);
-            await pipe.Writer.CompleteAsync();
-
-            return ParseDataRows(await readTask);
-        }
+        private static async Task<List<string[]>> Drain(PgQuery query) =>
+            ParseDataRows(await ExecuteToWireAsync(query, TestContext.Current.CancellationToken));
 
         private sealed class Order
         {

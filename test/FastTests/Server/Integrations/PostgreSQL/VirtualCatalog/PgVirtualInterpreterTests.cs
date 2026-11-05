@@ -1,11 +1,14 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Raven.Server.Integrations.PostgreSQL;
 using Raven.Server.Integrations.PostgreSQL.Exceptions;
+using Raven.Server.Integrations.PostgreSQL.Types;
 using Raven.Server.Integrations.PostgreSQL.VirtualCatalog;
 using Tests.Infrastructure;
 using Xunit;
@@ -43,6 +46,23 @@ namespace FastTests.Server.Integrations.PostgreSQL.VirtualCatalog
             Assert.True(PgVirtualInterpreter.TryExecute(sql, EmptyCtx(), out var table));
             Assert.Single(table.Data);
             Assert.Equal("32", DecodeCell(table, row: 0, column: 0));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Catalog_rows_are_sent_in_the_binary_format_bound_after_describe()
+        {
+            const string sql = "select oid, typname from pg_type where typname = 'int4'";
+            Assert.True(PgVirtualInterpreter.TryExecute(sql, EmptyCtx(), out var table));
+
+            using var query = new VirtualInterpreterQuery(sql, Array.Empty<int>(), table);
+            await query.Init();
+            query.Bind(Array.Empty<byte[]>(), Array.Empty<short>(), new short[] { 1, 0 });
+
+            var rows = ParseDataRowCells(await ExecuteToWireAsync(query, TestContext.Current.CancellationToken));
+
+            var cells = Assert.Single(rows);
+            Assert.Equal(PgTypeOIDs.Int4, BinaryPrimitives.ReadInt32BigEndian(cells[0]));
+            Assert.Equal("int4", Encoding.UTF8.GetString(cells[1]));
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]

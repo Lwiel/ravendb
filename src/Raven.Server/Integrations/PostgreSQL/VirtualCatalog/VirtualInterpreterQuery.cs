@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Raven.Server.Documents;
@@ -51,14 +54,32 @@ namespace Raven.Server.Integrations.PostgreSQL.VirtualCatalog
 
             if (table?.Data != null)
             {
+                var columns = _result?.Columns;
+                var hasBinaryColumns = columns != null && columns.Exists(c => c.FormatCode == PgFormat.Binary);
+
                 foreach (var dataRow in table.Data)
                 {
-                    await writer.WriteAsync(builder.DataRow(dataRow.ColumnData.Span), token);
+                    var cells = hasBinaryColumns ? ToResultFormats(dataRow.ColumnData, columns) : dataRow.ColumnData;
+                    await writer.WriteAsync(builder.DataRow(cells.Span), token);
                 }
             }
 
             var tag = table?.CommandTag ?? $"SELECT {table?.Data?.Count ?? 0}";
             await writer.WriteAsync(builder.CommandComplete(tag), token);
+        }
+
+        protected override IEnumerable<PgColumn> ResultColumns => _result?.Columns ?? Enumerable.Empty<PgColumn>();
+
+        private static Memory<ReadOnlyMemory<byte>?> ToResultFormats(Memory<ReadOnlyMemory<byte>?> textCells, List<PgColumn> columns)
+        {
+            var cells = textCells.ToArray();
+            for (var i = 0; i < cells.Length && i < columns.Count; i++)
+            {
+                if (columns[i].FormatCode == PgFormat.Binary && cells[i] is { } text)
+                    cells[i] = columns[i].PgType.ToBytes(columns[i].PgType.FromString(Encoding.UTF8.GetString(text.Span)), PgFormat.Binary);
+            }
+
+            return cells;
         }
 
         public override void Dispose()
