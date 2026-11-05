@@ -445,6 +445,25 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.Contains("NULLS", error.Message);
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        [RavenData("SELECT \"Company\", \"Freight\" FROM \"public\".\"Orders\" WHERE 1=0 LIMIT 10", "", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT \"Company\", \"Freight\" FROM \"public\".\"Orders\" WHERE 1=0 LIMIT 10 OFFSET 2", "", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT \"Company\", SUM(\"Freight\") AS \"s\" FROM \"public\".\"Orders\" WHERE 1=0 GROUP BY 1 LIMIT 5", "", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT COUNT(*) AS \"c\" FROM \"public\".\"Orders\" WHERE 1=0", "0", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT SUM(1) AS \"s\" FROM \"public\".\"Orders\" WHERE 1=0", "NULL", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT COUNT(1) AS \"c\" FROM \"public\".\"Orders\" WHERE 1=0 HAVING (COUNT(1) > 0)", "", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT COUNT(*) AS \"c\" FROM \"public\".\"Orders\" WHERE 1=1", "21", SearchEngineMode = RavenSearchEngineMode.All)]
+        public async Task Constant_false_where_returns_no_rows_and_a_zero_count(Options options, string sql, string expected)
+        {
+            using var store = GetDocumentStore(options);
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(sql, store, database);
+
+            Assert.Equal(expected, string.Join(",", rows.Select(r => r[0] ?? "NULL")));
+        }
+
         [RavenFact(RavenTestCategory.PostgreSql)]
         public async Task Year_dimension_returns_a_pg_error_naming_the_computed_group_key()
         {
