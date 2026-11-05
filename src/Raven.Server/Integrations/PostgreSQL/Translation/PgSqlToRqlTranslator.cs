@@ -274,8 +274,7 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             var fromAlias = rangeVar.Alias?.Aliasname;
 
             // Build WHERE clause (must be applied before GROUP BY)
-            if (selectStmt.WhereClause != null)
-                TranslateWhereClause(q, selectStmt.WhereClause, fromAlias);
+            var whereCanMatch = selectStmt.WhereClause == null || TranslateWhereClause(q, selectStmt.WhereClause, fromAlias);
 
             if (isGroupBy)
             {
@@ -285,6 +284,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             {
                 // The caller runs this as an RQL count query, so neither the projection nor the SQL
                 // bounds may be emitted: in SQL they cap the single output row, not the count.
+                if (whereCanMatch == false)
+                    WhereMatchesNothing(q);
+
                 return BuildRql(q);
             }
             else
@@ -322,7 +324,18 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 q.Take(limit.Value);
             }
 
+            if (whereCanMatch == false)
+                q.Take(0);
+
             return BuildRql(q);
+        }
+
+        private static void WhereMatchesNothing(AsyncDocumentQuery<JObject> q)
+        {
+            q.WhereTrue();
+            q.AndAlso();
+            q.NegateNext();
+            q.WhereTrue();
         }
 
         private static SelectStmt ResolveOrdinalReferences(SelectStmt selectStmt)
@@ -1384,26 +1397,23 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             funcCall.Args is [{ AConst.Ival: not null } arg] &&
             arg.AConst.Ival.Ival == 1;
 
-        private static void TranslateWhereClause(AsyncDocumentQuery<JObject> q, Node whereNode, string fromAlias)
+        private static bool TranslateWhereClause(AsyncDocumentQuery<JObject> q, Node whereNode, string fromAlias)
         {
             if (SqlWhereParser.TryParse(whereNode, fromAlias, out var parsed) == false)
                 throw new NotSupportedException("Unsupported WHERE clause");
 
             // A wholly-constant WHERE folds without touching data. Tableau opens a table with
-            // `SELECT * FROM t WHERE 1=0` to fetch the column schema with no rows: fold to `limit 0`
-            // (RqlQuery still infers the schema from a sample doc). `WHERE 1=1` folds to no filter.
+            // `SELECT * FROM t WHERE 1=0` to fetch the column schema with no rows; the caller turns a
+            // constant-false WHERE into `limit 0` (RqlQuery still infers the schema from a sample doc).
+            // `WHERE 1=1` folds to no filter.
             var folded = TryFoldConstant(parsed);
-            if (folded == false)
-            {
-                q.Take(0);
-                return;
-            }
-            if (folded == true)
-                return;
+            if (folded != null)
+                return folded.Value;
 
             // Mixed predicate: strip any identity constants (true under AND, false under OR) so EmitWhere
             // only sees real, data-dependent predicates and never a dangling boolean operator.
             EmitWhere(q, SimplifyConstants(parsed), wrapInSubclause: false);
+            return true;
         }
 
         // The constant truth value of a predicate built only from constants, or null if any part depends

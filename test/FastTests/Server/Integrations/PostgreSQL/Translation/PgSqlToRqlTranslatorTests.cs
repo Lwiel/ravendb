@@ -64,6 +64,22 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
             Assert.Equal("from 'Companies' limit 0, 0", Translate("SELECT * FROM \"public\".\"Companies\" WHERE 1=0"));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT * FROM \"public\".\"Companies\" WHERE 1=0 LIMIT 10", "from 'Companies' limit 0, 0")]
+        [InlineData("SELECT * FROM \"public\".\"Companies\" WHERE 1=0 LIMIT 10 OFFSET 5", "from 'Companies' limit 5, 0")]
+        public void WhereConstantFalse_KeepsLimitZeroOverAnSqlLimit(string sql, string expected)
+        {
+            Assert.Equal(expected, Translate(sql));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public void WhereConstantFalse_InACountQuery_FiltersOutEveryDocument()
+        {
+            Assert.True(Raven.Server.Integrations.PostgreSQL.Translation.PgSqlToRqlTranslator.TryParseScalarCount(
+                "SELECT count(*) FROM \"public\".\"Companies\" WHERE 1=0", documentDatabase: null, out var rql, out _));
+            Assert.Equal("from 'Companies' where true and not true", rql);
+        }
+
         // A constant-true WHERE is a no-op filter and is dropped.
         [RavenFact(RavenTestCategory.PostgreSql)]
         public void WhereConstantTrue_IsDropped()
