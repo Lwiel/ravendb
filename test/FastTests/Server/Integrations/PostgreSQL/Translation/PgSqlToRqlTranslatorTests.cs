@@ -65,6 +65,26 @@ namespace FastTests.Server.Integrations.PostgreSQL.Translation
         }
 
         [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT setting FROM pg_catalog.pg_settings WHERE name='max_index_keys'")]
+        [InlineData("SELECT setting FROM pg_settings WHERE name='max_index_keys'")]
+        [InlineData("SELECT * FROM pg_catalog.pg_stat_activity")]
+        [InlineData("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")]
+        [InlineData("SELECT count(*) FROM pg_catalog.pg_stat_activity")]
+        public void SystemCatalogRelation_IsNotTranslatedAsACollection(string sql)
+        {
+            Assert.False(Raven.Server.Integrations.PostgreSQL.Translation.PgSqlToRqlTranslator.TryParse(sql, Array.Empty<int>(), out _));
+            Assert.False(Raven.Server.Integrations.PostgreSQL.Translation.PgSqlToRqlTranslator.TryParseScalarCount(sql, documentDatabase: null, out _, out _));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
+        [InlineData("SELECT * FROM \"Tables\"", "from 'Tables'")]
+        [InlineData("SELECT * FROM \"public\".\"pg_settings\"", "from 'pg_settings'")]
+        public void CollectionNamedLikeANonPgCatalogTable_StillTranslates(string sql, string expected)
+        {
+            Assert.Equal(expected, Translate(sql));
+        }
+
+        [RavenTheory(RavenTestCategory.PostgreSql)]
         [InlineData("SELECT * FROM \"public\".\"Companies\" WHERE 1=0 LIMIT 10", "from 'Companies' limit 0, 0")]
         [InlineData("SELECT * FROM \"public\".\"Companies\" WHERE 1=0 LIMIT 10 OFFSET 5", "from 'Companies' limit 5, 0")]
         public void WhereConstantFalse_KeepsLimitZeroOverAnSqlLimit(string sql, string expected)

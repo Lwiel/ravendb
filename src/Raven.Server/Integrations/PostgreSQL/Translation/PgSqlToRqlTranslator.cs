@@ -10,6 +10,7 @@ using Raven.Client;
 using Raven.Client.Documents.Queries;
 using Raven.Client.Documents.Session;
 using Raven.Server.Documents;
+using Raven.Server.Integrations.PostgreSQL.VirtualCatalog;
 using Raven.Server.Logging;
 using Raven.Server.ServerWide.Context;
 using Sparrow.Json;
@@ -261,6 +262,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             if (selectStmt.FromClause is not [{ RangeVar: { Relname: var relname } rangeVar }])
                 throw new NotSupportedException("FROM clause with collection or index name is required");
 
+            if (IsSystemCatalogRelation(rangeVar))
+                throw new NotSupportedException($"\"{relname}\" is a PostgreSQL system catalog table, not a RavenDB collection");
+
             var isIndex = string.Equals(rangeVar.Schemaname, "indexes", StringComparison.OrdinalIgnoreCase);
 
             // The index name is emitted into the RQL `from index '...'` literal unescaped (unlike the
@@ -328,6 +332,15 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 q.Take(0);
 
             return BuildRql(q);
+        }
+
+        private static bool IsSystemCatalogRelation(RangeVar rangeVar)
+        {
+            if (string.IsNullOrEmpty(rangeVar.Schemaname))
+                return PgVirtualDatabase.TryGetTable("pg_catalog", rangeVar.Relname, out _);
+
+            return string.Equals(rangeVar.Schemaname, "pg_catalog", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(rangeVar.Schemaname, "information_schema", StringComparison.OrdinalIgnoreCase);
         }
 
         private static void WhereMatchesNothing(AsyncDocumentQuery<JObject> q)
