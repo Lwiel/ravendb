@@ -157,7 +157,20 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             if (whereNode.NullTest != null)
                 return TryParseNullTest(whereNode.NullTest, outerAliasToStrip, out result);
 
+            if (whereNode.ColumnRef != null)
+                return TryParseBooleanColumn(whereNode, outerAliasToStrip, expected: true, out result);
+
             return false;
+        }
+
+        private static bool TryParseBooleanColumn(Node column, string outerAliasToStrip, bool expected, out ParsedWhere result)
+        {
+            result = null;
+            if (TryExtractFieldPath(column, outerAliasToStrip, out var field) == false)
+                return false;
+
+            result = new ParsedBinary(field, "=", new ParsedValue(expected, ParsedValueKind.Bool));
+            return true;
         }
 
         private static bool TryParseBoolExpr(BoolExpr boolExpr, string outerAliasToStrip, out ParsedWhere result)
@@ -189,6 +202,9 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
                 {
                     if (boolExpr.Args.Count != 1)
                         return false;
+
+                    if (boolExpr.Args[0]?.ColumnRef != null)
+                        return TryParseBooleanColumn(boolExpr.Args[0], outerAliasToStrip, expected: false, out result);
 
                     if (TryParse(boolExpr.Args[0], outerAliasToStrip, out var child) == false)
                         return false;

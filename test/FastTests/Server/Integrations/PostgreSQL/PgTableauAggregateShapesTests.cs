@@ -464,6 +464,47 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.Equal(expected, string.Join(",", rows.Select(r => r[0] ?? "NULL")));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        [RavenData("SELECT CAST(\"Products\".\"Name\" AS TEXT) AS \"Name\", \"Products\".\"PricePerUnit\" AS \"PricePerUnit\" FROM \"public\".\"Products\" \"Products\" WHERE \"Products\".\"Discontinued\"", "A", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT CAST(\"Products\".\"Name\" AS TEXT) AS \"Name\", \"Products\".\"PricePerUnit\" AS \"PricePerUnit\" FROM \"public\".\"Products\" \"Products\" WHERE NOT \"Products\".\"Discontinued\"", "B", SearchEngineMode = RavenSearchEngineMode.All)]
+        public async Task Boolean_column_filter_keeps_only_the_matching_value(Options options, string sql, string expected)
+        {
+            using var store = GetDocumentStore(options);
+            using (var session = store.OpenAsyncSession())
+            {
+                var docs = new object[]
+                {
+                    new BoolProduct { Name = "A", PricePerUnit = 1, Discontinued = true },
+                    new BoolProduct { Name = "B", PricePerUnit = 2, Discontinued = false },
+                    new BoolProduct { Name = "C", PricePerUnit = 3, Discontinued = null },
+                    new NamedOnly { Name = "D" }
+                };
+                for (int i = 0; i < docs.Length; i++)
+                {
+                    await session.StoreAsync(docs[i], "products/" + (i + 1));
+                    session.Advanced.GetMetadataFor(docs[i])["@collection"] = "Products";
+                }
+                await session.SaveChangesAsync();
+            }
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(sql, store, database);
+
+            Assert.Equal(expected, string.Join(",", rows.Select(r => r[0]).Order()));
+        }
+
+        private sealed class BoolProduct
+        {
+            public string Name { get; set; }
+            public double PricePerUnit { get; set; }
+            public bool? Discontinued { get; set; }
+        }
+
+        private sealed class NamedOnly
+        {
+            public string Name { get; set; }
+        }
+
         [RavenFact(RavenTestCategory.PostgreSql)]
         public async Task PgJdbc_max_index_keys_lookup_returns_the_setting_without_creating_an_index()
         {
