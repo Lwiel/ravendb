@@ -43,6 +43,8 @@ namespace Raven.Server.Integrations.PostgreSQL.Translation
             return Task.FromResult<ICollection<PgColumn>>(_columns);
         }
 
+        protected override IEnumerable<PgColumn> ResultColumns => _columns;
+
         public override async Task Execute(MessageBuilder builder, PipeWriter writer, CancellationToken token)
         {
             if (_columns.Count == 0)

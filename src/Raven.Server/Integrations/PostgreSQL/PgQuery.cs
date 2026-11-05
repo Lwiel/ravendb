@@ -148,9 +148,11 @@ namespace Raven.Server.Integrations.PostgreSQL
             // the RowDescription and the DataRow value encoding use what the client asked for. Without this
             // a client that requests binary results - pgJDBC once a statement is server-side prepared -
             // decodes our text-encoded values as binary and crashes (e.g. a 2-byte "42" read as int8).
-            foreach (var column in Columns.Values)
+            foreach (var column in ResultColumns)
                 column.FormatCode = ResolveResultColumnFormat(column.ColumnIndex);
         }
+
+        protected virtual IEnumerable<PgColumn> ResultColumns => Columns.Values;
 
         // Result column format per the Bind message: 0 codes => all text; 1 code => applies to every
         // column; N codes => one per column, by position.
