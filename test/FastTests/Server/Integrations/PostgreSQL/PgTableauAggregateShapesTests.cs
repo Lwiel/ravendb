@@ -416,6 +416,66 @@ namespace FastTests.Server.Integrations.PostgreSQL
             Assert.Equal(new[] { "10", "1" }, Assert.Single(rows));
         }
 
+        [RavenTheory(RavenTestCategory.PostgreSql, LicenseRequired = true)]
+        [RavenData("SELECT \"Company\" FROM \"public\".\"Orders\" ORDER BY \"Company\" ASC NULLS FIRST", "NULL,NULL,a,b,c", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT \"Company\" FROM \"public\".\"Orders\" ORDER BY \"Company\" DESC NULLS LAST", "c,b,a,NULL,NULL", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT \"Company\", COUNT(1) AS \"c\" FROM \"public\".\"Orders\" GROUP BY 1 ORDER BY 1 ASC NULLS FIRST", "NULL,a,b,c", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT \"Company\", COUNT(1) AS \"c\" FROM \"public\".\"Orders\" GROUP BY 1 ORDER BY 1 DESC NULLS LAST", "c,b,a,NULL", SearchEngineMode = RavenSearchEngineMode.All)]
+        [RavenData("SELECT CAST(\"Orders\".\"Company\" AS TEXT) AS \"Company\", SUM(\"Orders\".\"Freight\") AS \"s\" FROM \"public\".\"Orders\" \"Orders\" GROUP BY 1 ORDER BY 2 DESC NULLS LAST, 1 ASC NULLS FIRST LIMIT 2", "b,NULL", SearchEngineMode = RavenSearchEngineMode.All)]
+        public async Task Null_placement_matching_ravendb_sorts_nulls_where_asked(Options options, string sql, string expected)
+        {
+            using var store = GetDocumentStore(options);
+            await SeedWithNulls(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var (_, rows) = await RunWarm(sql, store, database);
+
+            Assert.Equal(expected, string.Join(",", rows.Select(r => r[0] ?? "NULL")));
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Explicit_null_placement_on_a_numeric_column_returns_a_pg_error()
+        {
+            using var store = GetDocumentStore();
+            await SeedWithNulls(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            var error = Assert.Throws<PgErrorException>(() => PgQuery.CreateInstance(
+                "SELECT \"Freight\" FROM \"public\".\"Orders\" ORDER BY \"Freight\" ASC NULLS FIRST", Array.Empty<int>(), database, session: null));
+            Assert.Contains("NULLS", error.Message);
+        }
+
+        private static async Task SeedWithNulls(IDocumentStore store)
+        {
+            using (var session = store.OpenAsyncSession())
+            {
+                var docs = new object[]
+                {
+                    new NullableOrder { Company = "b", Freight = 2 },
+                    new NullableOrder { Company = "a", Freight = -1.5 },
+                    new NullableOrder { Company = null, Freight = null },
+                    new NullableOrder { Company = "c", Freight = 0 },
+                    new EmptyOrder()
+                };
+                for (int i = 0; i < docs.Length; i++)
+                {
+                    await session.StoreAsync(docs[i], "orders/" + (i + 1));
+                    session.Advanced.GetMetadataFor(docs[i])["@collection"] = "Orders";
+                }
+                await session.SaveChangesAsync();
+            }
+        }
+
+        private sealed class NullableOrder
+        {
+            public string Company { get; set; }
+            public double? Freight { get; set; }
+        }
+
+        private sealed class EmptyOrder
+        {
+        }
+
         private static async Task SeedItems(IDocumentStore store)
         {
             using var session = store.OpenAsyncSession();

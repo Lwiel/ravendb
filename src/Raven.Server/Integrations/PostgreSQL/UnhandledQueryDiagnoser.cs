@@ -94,12 +94,6 @@ namespace Raven.Server.Integrations.PostgreSQL
                 return true;
             }
 
-            if (TryGetUnsupportedSortModifier(outer, out var sortModifier))
-            {
-                message = $"ORDER BY ... {sortModifier} is not supported. RavenDB orders missing and null values by its own rule, which is not guaranteed to match PostgreSQL's, and RQL cannot express a per-key null placement or a sort driven by an operator — so the clause is rejected rather than silently sorted a different way. Drop the clause if the default ordering will do, or sort the rows client-side.";
-                return true;
-            }
-
             // count(*) on its own translates, so when a scalar count(*) query still failed the aggregate
             // is not the cause — blame the WHERE clause when that is what the translator choked on.
             if (IsSupportedScalarCountStar(outer) && TryDiagnoseWhereClause(outer, out message))
@@ -130,8 +124,18 @@ namespace Raven.Server.Integrations.PostgreSQL
                 return true;
             }
 
+            if (TryGetUnsupportedSortModifier(outer, out var sortModifier))
+            {
+                message = sortModifier == NullsPlacementModifier
+                    ? "ORDER BY ... NULLS FIRST / NULLS LAST translates only where it matches RavenDB's own null ordering: NULLS FIRST on an ascending text column, NULLS LAST on a descending text column, and any placement on a count(*) or sum(<column>) aggregate. Numeric columns and the opposite placements have no RQL form, so the clause is rejected rather than silently sorted a different way. Drop the clause, or use the placement RavenDB applies."
+                    : $"ORDER BY ... {sortModifier} is not supported. RQL cannot express a sort driven by an operator, so the clause is rejected rather than silently sorted a different way. Drop the clause if the default ordering will do, or sort the rows client-side.";
+                return true;
+            }
+
             return false;
         }
+
+        private const string NullsPlacementModifier = "NULLS FIRST / NULLS LAST";
 
         // Reports the first LIKE / ILIKE whose pattern shape has no correct RQL form. Supported shapes
         // return false so a query that failed for an unrelated reason keeps its own diagnosis.
@@ -549,7 +553,7 @@ namespace Raven.Server.Integrations.PostgreSQL
                     continue;
 
                 if (sortBy.SortbyNulls is SortByNulls.First or SortByNulls.Last)
-                    modifier = "NULLS FIRST / NULLS LAST";
+                    modifier = NullsPlacementModifier;
                 else if (sortBy.SortbyDir == SortByDir.SortbyUsing)
                     modifier = "USING <operator>";
                 else
