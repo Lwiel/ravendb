@@ -67,6 +67,7 @@ namespace Raven.Server.Integrations.PostgreSQL
             if (IsEmptyQuery)
                 return default;
 
+            Columns.Clear();
             _samples = await RunRqlQuery();
             return await GenerateSchema();
         }

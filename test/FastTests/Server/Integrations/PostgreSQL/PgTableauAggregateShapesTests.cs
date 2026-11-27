@@ -273,6 +273,27 @@ namespace FastTests.Server.Integrations.PostgreSQL
         }
 
         [RavenFact(RavenTestCategory.PostgreSql)]
+        public async Task Describing_a_prepared_statement_again_keeps_every_column_in_place()
+        {
+            using var store = GetDocumentStore();
+            await Seed(store);
+            var database = await Databases.GetDocumentDatabaseInstanceFor(store);
+
+            using var query = PgQuery.CreateInstance("SELECT * FROM \"public\".\"Orders\" WHERE \"Company\" = 'Gamma'", Array.Empty<int>(), database, session: null);
+            var firstColumns = (await query.Init()).Select(c => (c.Name, c.ColumnIndex)).ToList();
+            var firstRows = ParseDataRows(await ExecuteToWireAsync(query, TestContext.Current.CancellationToken));
+
+            var secondColumns = (await query.Init()).Select(c => (c.Name, c.ColumnIndex)).ToList();
+            var secondRows = ParseDataRows(await ExecuteToWireAsync(query, TestContext.Current.CancellationToken));
+
+            Assert.Equal(firstColumns, secondColumns);
+            Assert.Equal(Enumerable.Range(0, secondColumns.Count), secondColumns.Select(c => (int)c.ColumnIndex));
+            Assert.Equal(2, secondRows.Count);
+            Assert.All(secondRows, row => Assert.StartsWith("orders/", row[0]));
+            Assert.Equal(firstRows, secondRows);
+        }
+
+        [RavenFact(RavenTestCategory.PostgreSql)]
         public async Task Row_count_probe_with_having_returns_no_row_when_nothing_matches()
         {
             using var store = GetDocumentStore();
